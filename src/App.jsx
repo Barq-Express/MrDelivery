@@ -39,8 +39,254 @@ try { LANG = localStorage.getItem("mrd_lang") || "ar"; } catch (e) {}
 const setLangGlobal = (l) => { LANG = l; try { localStorage.setItem("mrd_lang", l); } catch (e) {} };
 const t = (ar, en) => (LANG === "en" ? en : ar);
 const dirOf = () => (LANG === "en" ? "ltr" : "rtl");
-const cLabel = (c) => (LANG === "en" ? (CMETA[c] ? CMETA[c].en : c) : (CMETA[c] ? CMETA[c].ar : c));
+const cLabel = (c) => (LANG === "en" ? (CMETA[c] ? CMETA[c].en : c) : (CMETA[c] ? cLabel(c) : c));
 const roleLabel = (r) => (LANG === "en" ? (ROLES_EN[r] || r) : (ROLES[r] || r));
+const TR = {
+  "المندوب": "Rider",
+  "المناديب": "Riders",
+  "الموظف": "Employee",
+  "الموظفون والمشرفون": "Employees & Supervisors",
+  "الهاتف": "Phone",
+  "رقم الهاتف": "Phone Number",
+  "المدني": "Civil ID",
+  "رقم المدني": "Civil ID",
+  "الحساب": "Account",
+  "الحساب البنكي": "Bank Account",
+  "المنطقة": "Area",
+  "المنطقة / المحافظة": "Area / Governorate",
+  "المنطقة الافتراضية": "Default Area",
+  "الشركة": "Company",
+  "الشركة المسؤول عنها": "Company in Charge",
+  "النوع": "Type",
+  "النوع الافتراضي": "Default Type",
+  "الحالة": "Status",
+  "آخر عمل": "Last Worked",
+  "الاسم": "Name",
+  "اسم": "Name",
+  "الطلبات": "Orders",
+  "عدد الطلبات": "Orders Count",
+  "المبلغ": "Amount",
+  "المرجع": "Reference",
+  "الرقم المرجعي": "Reference No.",
+  "التاريخ": "Date",
+  "تاريخ": "Date",
+  "التصنيف": "Category",
+  "الإيصال": "Receipt",
+  "إيصال": "Receipt",
+  "صورة الإيصال": "Receipt Image",
+  "إيصال البنك": "Bank Receipt",
+  "المتبقي": "Remaining",
+  "المحوّل": "Transferred",
+  "المطلوب تحويله": "To Transfer",
+  "مطلوب تحويله": "To Transfer",
+  "المستحق لك": "Your Dues",
+  "الراتب الشهري": "Monthly Salary",
+  "COD للتحويل": "COD to Transfer",
+  "COD_للتحويل": "COD to Transfer",
+  "المسؤولية": "Responsibility",
+  "نوع المسؤولية": "Responsibility Type",
+  "نطاق المسؤولية": "Scope",
+  "إجمالي المناديب": "Total Riders",
+  "إجمالي الطلبات": "Total Orders",
+  "إجمالي COD": "Total COD",
+  "نظرة عامة": "Overview",
+  "الحضور والنشاط": "Attendance",
+  "الحضور والانصراف": "Attendance",
+  "المطابقة البنكية": "Bank Reconciliation",
+  "COD والتحويلات": "COD & Transfers",
+  "الشفتات": "Shifts",
+  "التقارير": "Reports",
+  "الشفتات — كل الشركات": "Shifts — All Companies",
+  "الشفتات (كل الشركات)": "Shifts (All)",
+  "كل المناديب": "All Riders",
+  "تقارير عامة": "Reports",
+  "اللوحة العامة": "Dashboard",
+  "الموظفون": "Employees",
+  "تعيين الشفتات": "Assign Shifts",
+  "وقت الشفت": "Shift Time",
+  "بداية الشفت": "Shift Start",
+  "نهاية الشفت": "Shift End",
+  "أيام الدوام": "Working Days",
+  "سجل التحويلات": "Transfer History",
+  "نتيجة التصنيف": "Classification Result",
+  "إضافة مندوب": "Add Rider",
+  "إضافة موظف": "Add Employee",
+  "تسجيل جماعي": "Bulk Add",
+  "تسجيل جماعي للمناديب": "Bulk Add Riders",
+  "تعديل مندوب": "Edit Rider",
+  "تعديل موظف": "Edit Employee",
+  "معالجة الملف": "Process File",
+  "تشغيل المطابقة": "Run Reconciliation",
+  "إرسال التحويل": "Send Transfer",
+  "تحويل COD": "COD Transfer",
+  "حفظ": "Save",
+  "حفظ الشفت": "Save Shift",
+  "حفظ كلمة المرور": "Save Password",
+  "إلغاء": "Cancel",
+  "إغلاق": "Close",
+  "خروج": "Logout",
+  "الإعدادات": "Settings",
+  "إعدادات الحساب": "Account Settings",
+  "شفت": "Shift",
+  "تغيير كلمة المرور": "Change Password",
+  "كلمة المرور": "Password",
+  "كلمة المرور الحالية": "Current Password",
+  "كلمة المرور الجديدة": "New Password",
+  "تأكيد كلمة المرور": "Confirm Password",
+  "كلمة المرور الافتراضية": "Default Password",
+  "كلمة مرور المندوب": "Rider Password",
+  "قيمة المبلغ المحوّل (OMR)": "Transferred Amount (OMR)",
+  "تاريخ التحويل": "Transfer Date",
+  "المطابقة (هاتف/اسم)": "Match (phone/name)",
+  "نوع التقرير": "Report Type",
+  "إجراء": "Action",
+  "ملاحظات": "Notes",
+  "حتى": "until",
+  "كل الشركات": "All Companies",
+  "كل المناطق": "All Areas",
+  "كل مناديب المنطقة": "All riders in area",
+  "مناديب محددون": "Selected riders",
+  "لصق سريع": "Quick Paste",
+  "تحصيل": "Collected",
+  "تحويل": "Transfer",
+  "نقد": "Cash",
+  "مبلغ": "Amount",
+  "مبلغ COD": "COD Amount",
+  "مرجع": "Reference",
+  "مستحق": "Due",
+  "محافظة": "Governorate",
+  "منطقة": "Area",
+  "مدني": "Civil",
+  "هاتف": "Phone",
+  "جوال": "Mobile",
+  "بطاقة": "ID",
+  "طلب": "Order",
+  "نوع": "Type",
+  "دوام": "Shift",
+  "حساب": "Account",
+  "فري": "Free",
+  "فول": "Full",
+  "فريلانسر": "Freelancer",
+  "ثابت": "Full Time",
+  "موظف ثابت": "Full-time employee",
+  "الأيام": "Days",
+  "الجميع عمل بالأمس.": "Everyone worked yesterday.",
+  "لا يوجد.": "None.",
+  "غير نشطين": "Inactive",
+  "لم يعملوا بالأمس": "Didn't work yesterday",
+  "لم يعمل": "Not worked",
+  "مطابق": "Matched",
+  "غير مسجل": "Not registered",
+  "قيد المراجعة": "Under review",
+  "قبول يدوي": "Approved manually",
+  "رفض يدوي": "Rejected manually",
+  "قبول": "Approve",
+  "رفض": "Reject",
+  "بدأ الشفت ✓": "Shift started ✓",
+  "لم يبدأ — اتصل": "Not started — call",
+  "فتح النافذة ←": "Open window →",
+  "الحساب:": "Account:",
+  "لا بيانات": "No data",
+  "لا نتائج": "No results",
+  "لا يوجد مناديب": "No riders",
+  "لا يوجد موظفون — أضف أول موظف": "No employees — add the first one",
+  "لا توجد تحويلات": "No transfers",
+  "لا توجد تحويلات للمطابقة": "No transfers to reconcile",
+  "لا توجد شفتات مسجّلة لليوم. عيّن الشفتات من الجدول بالأسفل.": "No shifts today. Assign shifts in the table below.",
+  "لا مناديب مطابقون لهذه الشركة/المنطقة": "No riders match this company/area",
+  "تقرير COD": "COD Report",
+  "لم يعملوا / غير نشطين": "Not worked / Inactive",
+  "مستحقات الفريلانسر": "Freelancer Dues",
+  "رواتب Full Time": "Full-Time Salaries",
+  "تمت المطابقة الآلية.": "Auto reconciliation done.",
+  "تحويل صحيح": "Valid transfer",
+  "اختلاف في الرقم المرجعي": "Reference mismatch",
+  "اختلاف في مبلغ التحويل": "Amount mismatch",
+  "لم يتم العثور على التحويل": "Transfer not found",
+  "احتمال إشعار غير صحيح": "Possibly invalid slip",
+  "يحتاج مراجعة (اختلاف تاريخ)": "Needs review (date mismatch)",
+  "بانتظار كشف البنك": "Awaiting bank statement",
+  "✅ تحويل صحيح": "✅ Valid",
+  "❌ لم يُعثر عليه": "❌ Not found",
+  "⚠️ اختلاف مرجعي": "⚠️ Ref mismatch",
+  "⚠️ اختلاف مبلغ": "⚠️ Amount mismatch",
+  "⚠️ مراجعة (تاريخ)": "⚠️ Review (date)",
+  "⚠️ إشعار مشكوك": "⚠️ Suspect slip",
+  "الأحد": "Sunday",
+  "الإثنين": "Monday",
+  "الثلاثاء": "Tuesday",
+  "الأربعاء": "Wednesday",
+  "الخميس": "Thursday",
+  "الجمعة": "Friday",
+  "السبت": "Saturday",
+  "مشرف": "Supervisor",
+  "عمليات": "Operations",
+  "قائد فريق": "Team Leader",
+  "مدير منطقة": "Area Manager",
+  "مدير النظام": "System Admin",
+  "مدير العمليات": "Operations Manager",
+  "المالية": "Finance",
+  "قسم المالية": "Finance",
+  "مشرف شركة": "Supervisor",
+  "مندوب": "Rider",
+  "مشرف الطلبات": "Talabat Supervisor",
+  "مشرف سنونو": "Snoonu Supervisor",
+  "مشرف أرامكس": "Aramex Supervisor",
+  "بحث...": "Search...",
+  "بحث بالاسم أو الهاتف": "Search name or phone",
+  "بحث بالاسم أو الهاتف...": "Search name or phone...",
+  "بحث بالاسم/الهاتف/المدني/المنطقة": "Search name/phone/civil/area",
+  "نزوى / صحار...": "Nizwa / Sohar...",
+  "نزوى / صحار / صلالة...": "Nizwa / Sohar / Salalah...",
+  "جارٍ التحميل…": "Loading…",
+  "بوابة المندوب": "Rider Portal",
+  "آخر_عمل": "Last Worked",
+  "الراتب": "Salary",
+  "معاينة": "Preview",
+  "صف": "rows",
+  "صالح": "Valid",
+  "تخطّي": "Skip",
+  "الاسم، الهاتف، النوع، المنطقة، رقم المدني، رقم الحساب": "Name, Phone, Type, Area, Civil ID, Bank Account",
+  "الاسم ورقم الهاتف مطلوبان": "Name and phone are required",
+  "اسم الموظف مطلوب": "Employee name is required",
+  "المبلغ والرقم المرجعي مطلوبان": "Amount and reference are required",
+  "حذف هذا الموظف؟": "Delete this employee?",
+  "تعذّر إرسال التحويل، حاول مرة أخرى": "Failed to send transfer, try again",
+  "تعذّر التغيير:": "Failed to change: ",
+  "تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.": "Failed to save — check your connection and retry.",
+  "أدخل كلمة المرور الحالية": "Enter current password",
+  "كلمة المرور الجديدة قصيرة (4 خانات على الأقل)": "New password too short (min 4)",
+  "كلمة المرور يجب أن تكون 6 خانات على الأقل": "Password must be at least 6 characters",
+  "تأكيد كلمة المرور لا يطابق": "Password confirmation does not match",
+  "كلمة المرور الحالية غير صحيحة": "Current password is incorrect",
+  "✅ تم تغيير كلمة المرور بنجاح": "✅ Password changed successfully",
+  "بيانات الدخول غير صحيحة": "Invalid login credentials",
+  "رقم الهاتف أو كلمة المرور غير صحيحة": "Invalid phone or password",
+  "اختر المناديب": "Select riders",
+  "في هذا النطاق": "in scope",
+  "يوم": "day",
+  "روستر اليوم": "Today's Roster",
+  "طابق الأعمدة": "Map the columns",
+  "لديك مبلغ COD لم تحوّله:": "You have untransferred COD:",
+  "يوم — تواصل معه": "days — contact him",
+  "لم يظهروا في الشيت (لم يعملوا):": "Not in sheet (didn't work):",
+  "المناديب المتوقّع دوامهم اليوم مرتّبين حسب وقت الشفت — تواصل معهم قبل البداية للتأكد من الحضور.": "Riders expected today, sorted by shift time — contact them before start to confirm attendance.",
+  "يقارن الرقم المرجعي والمبلغ والتاريخ، ويصنّف كل عملية آلياً.": "Compares reference, amount and date, and classifies each transfer automatically.",
+  "يقرأ النظام الملف تلقائياً، يحتسب الطلبات والمبالغ، ويحدّث الإحصائيات وتطبيق المندوب فوراً. غير الموجودين = لم يعملوا.": "The system reads the file automatically, computes orders and amounts, and updates stats and the rider app instantly. Those not listed = didn't work.",
+  "أرامكس: فريلانسر = 0.700/طلب · Full Time = 200 ثابت + (≥300 طلب: +200 و 0.700 للطلب الإضافي) وإلا 0.600/طلب.": "Aramex: Freelancer = 0.700/order · Full Time = 200 base + (≥300 orders: +200 and 0.700 per extra order) else 0.600/order.",
+  "سنونو: فريلانسر = 1.400/طلب · Full Time = 425 ثابت. COD يحوّل يومياً · الفريلانسر كل 10 أيام.": "Snoonu: Freelancer = 1.400/order · Full Time = 425 fixed. COD transferred daily · Freelancers every 10 days.",
+  "أرامكس": "Aramex",
+  "سنونو": "Snoonu",
+  "أيام": "days",
+  "عمود": "Column",
+  "نشط": "active",
+  "غير نشط": "inactive",
+  "مكرر/ناقص:": "dup/incomplete:",
+  "تم تحميل": "Loaded",
+  "عملية من كشف": "transactions from statement of",
+};
+const tr = (s) => { if (LANG !== "en" || s == null) return s; const k = String(s).trim(); return TR[k] || s; };
+
 
 const STAFF_USERS = [
   { username: "admin", password: "admin123", role: "Admin", name: "مدير النظام", company: null },
@@ -66,7 +312,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const omr = (n) => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + " OMR";
 const daysSince = (d) => (!d ? Infinity : Math.floor((Date.now() - new Date(d).getTime()) / 86400000));
 const normPhone = (v) => String(v || "").replace(/[^0-9]/g, "").replace(/^968/, "").replace(/^0+/, "");
-const normType = (v, def) => { const s = String(v || "").trim().toLowerCase(); if (!s) return def; if (s.includes("free") || s.includes("فري")) return "Freelancer"; if (s.includes("full") || s.includes("فول") || s.includes("ثابت") || s.includes("دوام")) return "Full Time"; return def; };
+const normType = (v, def) => { const s = String(v || "").trim().toLowerCase(); if (!s) return def; if (s.includes("free") || s.includes(tr("فري"))) return "Freelancer"; if (s.includes("full") || s.includes(tr("فول")) || s.includes(tr("ثابت")) || s.includes(tr("دوام"))) return "Full Time"; return def; };
 const lastDays = (n) => { const a = []; for (let i = 0; i < n; i++) { const d = new Date(); d.setDate(d.getDate() - i); a.push(d.toISOString().slice(0, 10)); } return a; };
 
 /* earnings owed to a rider (company pays rider), based on TOTAL monthly orders */
@@ -215,7 +461,7 @@ function StatCard({ icon, label, value, accent = BRAND.navy, sub }) {
   );
 }
 function exportExcel(rows, name) {
-  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ "لا بيانات": "" }]);
+  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ tr("لا بيانات"): "" }]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Report");
   XLSX.writeFile(wb, `${name}.xlsx`);
@@ -257,10 +503,10 @@ function ExcelImporter({ company, riders, onApply }) {
       setHeaders(hs);
       setRows(data.slice(1).filter((r) => r.some((c) => c !== "")));
       setMap({
-        key: guess(hs, ["phone", "هاتف", "rider", "مندوب", "name", "اسم", "id"]),
-        orders: guess(hs, ["order", "طلب", "delivered", "trips", "count"]),
-        cod: guess(hs, ["cod", "cash", "نقد", "collected", "تحصيل"]),
-        due: guess(hs, ["transfer", "تحويل", "due", "payable", "مستحق"]),
+        key: guess(hs, ["phone", tr("هاتف"), "rider", tr("مندوب"), "name", tr("اسم"), "id"]),
+        orders: guess(hs, ["order", tr("طلب"), "delivered", "trips", "count"]),
+        cod: guess(hs, ["cod", "cash", tr("نقد"), "collected", tr("تحصيل")]),
+        due: guess(hs, ["transfer", tr("تحويل"), "due", "payable", tr("مستحق")]),
       });
     });
   };
@@ -286,22 +532,22 @@ function ExcelImporter({ company, riders, onApply }) {
     <Card className="p-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="font-bold text-slate-800 flex items-center gap-2"><Upload size={18} /> رفع ملف Excel — {CMETA[company].ar}</h3>
-          <p className="text-xs text-slate-500 mt-1">يقرأ النظام الملف تلقائياً، يحتسب الطلبات والمبالغ، ويحدّث الإحصائيات وتطبيق المندوب فوراً. غير الموجودين = لم يعملوا.</p>
+          <h3 className="font-bold text-slate-800 flex items-center gap-2"><Upload size={18} /> {t("رفع ملف Excel —","Upload Excel —")} {cLabel(company)}</h3>
+          <p className="text-xs text-slate-500 mt-1">{tr("يقرأ النظام الملف تلقائياً، يحتسب الطلبات والمبالغ، ويحدّث الإحصائيات وتطبيق المندوب فوراً. غير الموجودين = لم يعملوا.")}</p>
         </div>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onFile}
           className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold" />
       </div>
       {headers && (
         <div className="mt-5 border-t border-slate-100 pt-4">
-          <p className="text-xs text-slate-500 mb-3">طابق الأعمدة ({rows.length} صف):</p>
+          <p className="text-xs text-slate-500 mb-3">{tr("طابق الأعمدة")} ({rows.length} {tr("صف")}):</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Field label="المطابقة (هاتف/اسم)"><select className={inputCls} value={map.key} onChange={(e) => setMap({ ...map, key: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `عمود ${i + 1}`}</option>)}</select></Field>
-            <Field label="عدد الطلبات"><select className={inputCls} value={map.orders} onChange={(e) => setMap({ ...map, orders: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `عمود ${i + 1}`}</option>)}</select></Field>
-            <Field label="مبلغ COD"><select className={inputCls} value={map.cod} onChange={(e) => setMap({ ...map, cod: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `عمود ${i + 1}`}</option>)}</select></Field>
-            {isTalabat && <Field label="المطلوب تحويله"><select className={inputCls} value={map.due} onChange={(e) => setMap({ ...map, due: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `عمود ${i + 1}`}</option>)}</select></Field>}
+            <Field label={tr("المطابقة (هاتف/اسم)")}><select className={inputCls} value={map.key} onChange={(e) => setMap({ ...map, key: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
+            <Field label={tr("عدد الطلبات")}><select className={inputCls} value={map.orders} onChange={(e) => setMap({ ...map, orders: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
+            <Field label={tr("مبلغ COD")}><select className={inputCls} value={map.cod} onChange={(e) => setMap({ ...map, cod: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
+            {isTalabat && <Field label={tr("المطلوب تحويله")}><select className={inputCls} value={map.due} onChange={(e) => setMap({ ...map, due: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>}
           </div>
-          <div className="mt-4"><Btn onClick={apply}><CheckCircle2 size={16} /> معالجة الملف</Btn></div>
+          <div className="mt-4"><Btn onClick={apply}><CheckCircle2 size={16} /> {tr("معالجة الملف")}</Btn></div>
         </div>
       )}
     </Card>
@@ -360,6 +606,14 @@ function Login({ onRider, onToggleLang }) {
               <Btn onClick={riderLogin} className="w-full justify-center">{busy ? "..." : t("دخول المندوب", "Rider Sign In")}</Btn>
             </div>
           )}
+          <div className="mt-5 pt-4 border-t border-slate-100 text-center">
+            <a href={"https://wa.me/96896741992?text=" + encodeURIComponent(t("مرحباً، نسيت كلمة المرور لنظام Mr. Delivery وأحتاج إعادة تعيينها. اسمي/رقمي: ", "Hi, I forgot my Mr. Delivery password and need it reset. My name/number: "))}
+               target="_blank" rel="noopener noreferrer"
+               className="inline-flex items-center gap-2 text-sm font-semibold" style={{ color: "#16a34a" }}>
+              <Phone size={15} /> {t("نسيت كلمة المرور؟ تواصل عبر واتساب", "Forgot password? Contact via WhatsApp")}
+            </a>
+            <p className="text-[11px] text-slate-400 mt-1">{t("مدير النظام يعيد تعيينها لك", "The system admin will reset it for you")}</p>
+          </div>
         </Card>
       </div>
     </div>
@@ -393,27 +647,27 @@ function GlobalDashboard({ db, onOpen }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={<Users size={16} />} label="إجمالي المناديب" value={tot.riders} accent={BRAND.navy} />
-        <StatCard icon={<FileBarChart size={16} />} label="إجمالي الطلبات" value={tot.orders.toLocaleString()} accent={BRAND.blue} />
-        <StatCard icon={<Banknote size={16} />} label="إجمالي COD" value={omr(tot.cod)} accent={BRAND.orange} />
-        <StatCard icon={<AlertTriangle size={16} />} label="المتبقي" value={omr(tot.cod - tot.transferred)} accent="#c0341d" />
+        <StatCard icon={<Users size={16} />} label={tr("إجمالي المناديب")} value={tot.riders} accent={BRAND.navy} />
+        <StatCard icon={<FileBarChart size={16} />} label={tr("إجمالي الطلبات")} value={tot.orders.toLocaleString()} accent={BRAND.blue} />
+        <StatCard icon={<Banknote size={16} />} label={tr("إجمالي COD")} value={omr(tot.cod)} accent={BRAND.orange} />
+        <StatCard icon={<AlertTriangle size={16} />} label={tr("المتبقي")} value={omr(tot.cod - tot.transferred)} accent="#c0341d" />
       </div>
       <div className="grid md:grid-cols-3 gap-3">
         {perC.map(({ c, s }) => (
           <Card key={c} className="p-5 cursor-pointer hover:shadow-md transition" style={{ borderTop: `3px solid ${CMETA[c].color}` }}>
             <button onClick={() => onOpen(c)} className="w-full text-right">
               <div className="flex items-center justify-between mb-3">
-                <span className="font-extrabold text-lg" style={{ color: CMETA[c].color }}>{CMETA[c].ar}</span>
+                <span className="font-extrabold text-lg" style={{ color: CMETA[c].color }}>{cLabel(c)}</span>
                 <Building2 size={20} style={{ color: CMETA[c].color }} />
               </div>
               <div className="grid grid-cols-2 gap-y-2 text-sm">
-                <div className="text-slate-500">المناديب</div><div className="font-bold text-left">{s.total}</div>
-                <div className="text-slate-500">الطلبات</div><div className="font-bold text-left">{s.orders}</div>
+                <div className="text-slate-500">{tr("المناديب")}</div><div className="font-bold text-left">{s.total}</div>
+                <div className="text-slate-500">{tr("الطلبات")}</div><div className="font-bold text-left">{s.orders}</div>
                 <div className="text-slate-500">COD</div><div className="font-bold text-left">{omr(s.cod)}</div>
-                <div className="text-slate-500">المتبقي</div><div className="font-bold text-left" style={{ color: "#c0341d" }}>{omr(s.remaining)}</div>
-                <div className="text-slate-500">غير نشطين</div><div className="font-bold text-left">{s.inactive.length > 0 ? <span style={{ color: "#c0341d" }}>{s.inactive.length} 🔴</span> : "0"}</div>
+                <div className="text-slate-500">{tr("المتبقي")}</div><div className="font-bold text-left" style={{ color: "#c0341d" }}>{omr(s.remaining)}</div>
+                <div className="text-slate-500">{tr("غير نشطين")}</div><div className="font-bold text-left">{s.inactive.length > 0 ? <span style={{ color: "#c0341d" }}>{s.inactive.length} 🔴</span> : "0"}</div>
               </div>
-              <div className="mt-3 text-xs font-semibold" style={{ color: CMETA[c].color }}>فتح النافذة ←</div>
+              <div className="mt-3 text-xs font-semibold" style={{ color: CMETA[c].color }}>{tr("فتح النافذة ←")}</div>
             </button>
           </Card>
         ))}
@@ -449,7 +703,7 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
       const hs = (data[0] || []).map((x) => String(x));
       setHeaders(hs); setXrows(data.slice(1).filter((r) => r.some((c) => c !== "")));
       const g = (w) => { const i = hs.findIndex((h) => w.some((x) => String(h).toLowerCase().includes(x))); return i >= 0 ? i : 0; };
-      setXmap({ name: g(["name", "اسم"]), phone: g(["phone", "هاتف", "جوال", "mobile"]), type: g(["type", "نوع"]), area: g(["area", "region", "منطقة", "محافظة"]), civil: g(["civil", "مدني", "id", "بطاقة"]), bank: g(["bank", "حساب", "iban", "account"]) });
+      setXmap({ name: g(["name", tr("اسم")]), phone: g(["phone", tr("هاتف"), tr("جوال"), "mobile"]), type: g(["type", tr("نوع")]), area: g(["area", "region", tr("منطقة"), tr("محافظة")]), civil: g(["civil", tr("مدني"), "id", tr("بطاقة")]), bank: g(["bank", tr("حساب"), "iban", "account"]) });
     });
   };
   const parseExcel = () => xrows.map((r) => ({ name: String(r[xmap.name] || "").trim(), phone: String(r[xmap.phone] || "").trim(), type: String(r[xmap.type] || "").trim(), area: String(r[xmap.area] || "").trim(), civil: String(r[xmap.civil] || "").trim(), bank: String(r[xmap.bank] || "").trim() }));
@@ -478,31 +732,31 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
     <div className="space-y-4">
       <datalist id="mrd-bulk-areas">{allAreas.map((a) => <option key={a} value={a} />)}</datalist>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {!company && <Field label="الشركة"><select className={inputCls} value={comp} onChange={(e) => setComp(e.target.value)}>{COMPANIES.map((c) => <option key={c} value={c}>{CMETA[c].ar}</option>)}</select></Field>}
-        <Field label="النوع الافتراضي"><select className={inputCls} value={type} onChange={(e) => setType(e.target.value)}><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select></Field>
-        <Field label="المنطقة الافتراضية"><input className={inputCls} list="mrd-bulk-areas" value={area} onChange={(e) => setArea(e.target.value)} placeholder="نزوى / صحار..." /></Field>
-        <Field label="كلمة المرور الافتراضية"><input className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
+        {!company && <Field label={tr("الشركة")}><select className={inputCls} value={comp} onChange={(e) => setComp(e.target.value)}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>}
+        <Field label={tr("النوع الافتراضي")}><select className={inputCls} value={type} onChange={(e) => setType(e.target.value)}><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select></Field>
+        <Field label={tr("المنطقة الافتراضية")}><input className={inputCls} list="mrd-bulk-areas" value={area} onChange={(e) => setArea(e.target.value)} placeholder={tr("نزوى / صحار...")} /></Field>
+        <Field label={tr("كلمة المرور الافتراضية")}><input className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
       </div>
 
       <div className="flex gap-1 border-b border-slate-200">
-        {[["paste", "لصق سريع"], ["excel", "Excel"]].map(([k, l]) => (
+        {[["paste", tr("لصق سريع")], ["excel", "Excel"]].map(([k, l]) => (
           <button key={k} onClick={() => setMode(k)} className="px-4 py-2 text-sm font-semibold border-b-2" style={mode === k ? { color: BRAND.orange, borderColor: BRAND.orange } : { color: "#64748b", borderColor: "transparent" }}>{l}</button>
         ))}
       </div>
 
       {mode === "paste" ? (
         <div>
-          <p className="text-xs text-slate-500 mb-2">كل مندوب في سطر، بالترتيب: <b>الاسم، الهاتف، النوع، المنطقة، رقم المدني، رقم الحساب</b> (افصل بفاصلة أو Tab). أي خانة فارغة تأخذ الافتراضي فوق. المدني والحساب اختياريان.</p>
+          <p className="text-xs text-slate-500 mb-2">{tr("كل مندوب في سطر، بالترتيب:")} <b>{tr("الاسم، الهاتف، النوع، المنطقة، رقم المدني، رقم الحساب")}</b> (افصل بفاصلة أو Tab). أي خانة فارغة تأخذ الافتراضي فوق. المدني والحساب اختياريان.</p>
           <textarea className={inputCls + " font-mono text-xs"} rows={7} dir="rtl" value={text} onChange={(e) => setText(e.target.value)}
-            placeholder={"أحمد البلوشي، 92001010، فريلانسر، صحار، 11223344، OM12 0001 9999\nسعيد الكندي، 93004050، فول تايم، نزوى،،"} />
+            placeholder={tr("أحمد البلوشي، 92001010، فريلانسر، صحار، 11223344، OM12 0001 9999\nسعيد الكندي، 93004050، فول تايم، نزوى،،")} />
         </div>
       ) : (
         <div>
           <input type="file" accept=".xlsx,.xls,.csv" onChange={onFile} className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold" />
           {headers && (
             <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mt-3">
-              {[["name", "الاسم"], ["phone", "الهاتف"], ["type", "النوع"], ["area", "المنطقة"], ["civil", "المدني"], ["bank", "الحساب"]].map(([k, l]) => (
-                <Field key={k} label={l}><select className={inputCls} value={xmap[k]} onChange={(e) => setXmap({ ...xmap, [k]: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `عمود ${i + 1}`}</option>)}</select></Field>
+              {[["name", tr("الاسم")], ["phone", tr("الهاتف")], ["type", tr("النوع")], ["area", tr("المنطقة")], ["civil", tr("المدني")], ["bank", tr("الحساب")]].map(([k, l]) => (
+                <Field key={k} label={l}><select className={inputCls} value={xmap[k]} onChange={(e) => setXmap({ ...xmap, [k]: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
               ))}
             </div>
           )}
@@ -512,21 +766,21 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
       {rows.length > 0 && (
         <div className="border border-slate-200 rounded-xl overflow-hidden">
           <div className="px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-600 flex justify-between">
-            <span>معاينة ({rows.length} صف)</span>
-            <span style={{ color: "#0f9d58" }}>صالح: {valid.length}{rows.length - valid.length > 0 ? ` · مكرر/ناقص: ${rows.length - valid.length}` : ""}</span>
+            <span>{tr("معاينة")} ({rows.length} {tr("صف")})</span>
+            <span style={{ color: "#0f9d58" }}>صالح: {valid.length}{rows.length - valid.length > 0 ? ` · ${tr("مكرر/ناقص:")} ${rows.length - valid.length}` : ""}</span>
           </div>
           <div className="max-h-56 overflow-auto"><table className="w-full text-xs">
-            <thead><tr className="text-right text-slate-400 border-b border-slate-100">{["الاسم", "الهاتف", "النوع", "المنطقة", "المدني", "الحساب", ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+            <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("الاسم"), tr("الهاتف"), tr("النوع"), tr("المنطقة"), tr("المدني"), tr("الحساب"), ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
             <tbody>
               {rows.slice(0, 100).map((x, i) => (
                 <tr key={i} className="border-b border-slate-50" style={x.dup ? { background: "#fff7ed", opacity: 0.6 } : {}}>
                   <td className="py-1.5 px-2 font-semibold">{x.name || "—"}</td>
                   <td className="px-2" dir="ltr">{x.phone || "—"}</td>
-                  <td className="px-2">{x.rtype === "Full Time" ? "ثابت" : "فريلانسر"}</td>
+                  <td className="px-2">{x.rtype === "Full Time" ? tr("ثابت") : tr("فريلانسر")}</td>
                   <td className="px-2">{x.rarea || "—"}</td>
                   <td className="px-2" dir="ltr">{x.civil || "—"}</td>
                   <td className="px-2" dir="ltr">{x.bank || "—"}</td>
-                  <td className="px-2">{x.dup ? <span style={{ color: "#c0341d" }}>تخطّي</span> : <span style={{ color: "#0f9d58" }}>✓</span>}</td>
+                  <td className="px-2">{x.dup ? <span style={{ color: "#c0341d" }}>{tr("تخطّي")}</span> : <span style={{ color: "#0f9d58" }}>✓</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -535,7 +789,7 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
       )}
 
       <div className="flex justify-end gap-2 pt-1">
-        <Btn kind="ghost" onClick={onClose}>إلغاء</Btn>
+        <Btn kind="ghost" onClick={onClose}>{tr("إلغاء")}</Btn>
         <Btn onClick={addAll}><Plus size={15} /> إضافة {valid.length} مندوب</Btn>
       </div>
     </div>
@@ -555,7 +809,7 @@ function Riders({ db, save, company }) {
     (r.name.includes(q) || r.phone.includes(q) || (r.civil || "").includes(q) || (r.area || "").includes(q)));
   const submit = () => {
     const r = { ...editing };
-    if (!r.name || !r.phone) return alert("الاسم ورقم الهاتف مطلوبان");
+    if (!r.name || !r.phone) return alert(tr("الاسم ورقم الهاتف مطلوبان"));
     if (!r.username) r.username = r.phone;
     const riders = r.id ? db.riders.map((x) => (x.id === r.id ? r : x)) : [...db.riders, { ...r, id: uid(), lastWorked: null }];
     save({ ...db, riders }); setEditing(null);
@@ -567,19 +821,19 @@ function Riders({ db, save, company }) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-2 flex-wrap items-center">
           <div className="relative"><Search size={16} className="absolute right-3 top-2.5 text-slate-400" />
-            <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder="بحث بالاسم/الهاتف/المدني/المنطقة" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          {!company && <select className={inputCls + " w-32"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">كل الشركات</option>{COMPANIES.map((c) => <option key={c} value={c}>{CMETA[c].ar}</option>)}</select>}
-          <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">كل المناطق</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
+            <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={tr("بحث بالاسم/الهاتف/المدني/المنطقة")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          {!company && <select className={inputCls + " w-32"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">{tr("كل الشركات")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>}
+          <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">{tr("كل المناطق")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
         </div>
         <div className="flex gap-2">
-          <Btn kind="dark" onClick={() => setBulk(true)}><Upload size={16} /> تسجيل جماعي</Btn>
-          <Btn onClick={() => setEditing(blank)}><Plus size={16} /> إضافة مندوب</Btn>
+          <Btn kind="dark" onClick={() => setBulk(true)}><Upload size={16} /> {tr("تسجيل جماعي")}</Btn>
+          <Btn onClick={() => setEditing(blank)}><Plus size={16} /> {tr("إضافة مندوب")}</Btn>
         </div>
       </div>
       <Card className="overflow-hidden"><div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-            {["المندوب", "الهاتف", "المدني", "المنطقة", "الشركة", "النوع", "الحالة", "آخر عمل", ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
+            {[tr("المندوب"), tr("الهاتف"), tr("المدني"), tr("المنطقة"), tr("الشركة"), tr("النوع"), tr("الحالة"), tr("آخر عمل"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
             {list.map((r) => {
@@ -591,36 +845,36 @@ function Riders({ db, save, company }) {
                   <td className="px-3 text-slate-500" dir="ltr">{r.civil || "—"}</td>
                   <td className="px-3 text-slate-600">{r.area ? <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-slate-400" />{r.area}</span> : "—"}</td>
                   <td className="px-3">{companyPill(r.company)}</td>
-                  <td className="px-3 text-slate-600">{r.type === "Freelancer" ? "فريلانسر" : "ثابت"}</td>
+                  <td className="px-3 text-slate-600">{r.type === "Freelancer" ? tr("فريلانسر") : tr("ثابت")}</td>
                   <td className="px-3">{statusPill(r.status)}</td>
                   <td className="px-3 text-slate-500">{r.lastWorked || "—"}</td>
                   <td className="px-3"><button onClick={() => setEditing(r)} className="text-slate-400 hover:text-slate-700"><Pencil size={16} /></button></td>
                 </tr>
               );
             })}
-            {list.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-slate-400">لا يوجد مناديب</td></tr>}
+            {list.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-slate-400">{tr("لا يوجد مناديب")}</td></tr>}
           </tbody>
         </table>
       </div></Card>
 
-      <Modal open={bulk} onClose={() => setBulk(false)} title="تسجيل جماعي للمناديب" wide>
+      <Modal open={bulk} onClose={() => setBulk(false)} title={tr("تسجيل جماعي للمناديب")} wide>
         <RiderBulkAdd company={company} existing={db.riders} onAdd={addBulk} onClose={() => setBulk(false)} />
       </Modal>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? "تعديل مندوب" : "إضافة مندوب"} wide>
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? tr("تعديل مندوب") : tr("إضافة مندوب")} wide>
         {editing && (
           <div className="grid grid-cols-2 gap-4">
-            <Field label="الاسم"><input className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
-            <Field label="رقم الهاتف"><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
-            <Field label="رقم المدني"><input className={inputCls} dir="ltr" value={editing.civil || ""} onChange={(e) => setEditing({ ...editing, civil: e.target.value })} /></Field>
-            <Field label="المنطقة / المحافظة"><input className={inputCls} list="mrd-areas" value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value })} placeholder="نزوى / صحار / صلالة..." /></Field>
-            <Field label="الحساب البنكي"><input className={inputCls} dir="ltr" value={editing.bank} onChange={(e) => setEditing({ ...editing, bank: e.target.value })} /></Field>
-            <Field label="الشركة"><select className={inputCls} value={editing.company} disabled={!!company} onChange={(e) => setEditing({ ...editing, company: e.target.value })}>{COMPANIES.map((c) => <option key={c} value={c}>{CMETA[c].ar}</option>)}</select></Field>
-            <Field label="النوع"><select className={inputCls} value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select></Field>
-            <Field label="الحالة"><select className={inputCls} value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></Field>
-            <Field label="كلمة مرور المندوب"><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>
-            <div className="col-span-2"><Field label="ملاحظات"><textarea className={inputCls} rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field></div>
-            <div className="col-span-2 flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>إلغاء</Btn><Btn onClick={submit}>حفظ</Btn></div>
+            <Field label={tr("الاسم")}><input className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
+            <Field label={tr("رقم الهاتف")}><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
+            <Field label={tr("رقم المدني")}><input className={inputCls} dir="ltr" value={editing.civil || ""} onChange={(e) => setEditing({ ...editing, civil: e.target.value })} /></Field>
+            <Field label={tr("المنطقة / المحافظة")}><input className={inputCls} list="mrd-areas" value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value })} placeholder={tr("نزوى / صحار / صلالة...")} /></Field>
+            <Field label={tr("الحساب البنكي")}><input className={inputCls} dir="ltr" value={editing.bank} onChange={(e) => setEditing({ ...editing, bank: e.target.value })} /></Field>
+            <Field label={tr("الشركة")}><select className={inputCls} value={editing.company} disabled={!!company} onChange={(e) => setEditing({ ...editing, company: e.target.value })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
+            <Field label={tr("النوع")}><select className={inputCls} value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select></Field>
+            <Field label={tr("الحالة")}><select className={inputCls} value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></Field>
+            <Field label={tr("كلمة مرور المندوب")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>
+            <div className="col-span-2"><Field label={tr("ملاحظات")}><textarea className={inputCls} rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field></div>
+            <div className="col-span-2 flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>{tr("إلغاء")}</Btn><Btn onClick={submit}>{tr("حفظ")}</Btn></div>
           </div>
         )}
       </Modal>
@@ -636,21 +890,21 @@ function OverviewTab({ company, db }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={<Users size={16} />} label="المناديب" value={s.total} accent={CMETA[company].color} sub={`${s.active} نشط · ${s.inactiveCount} غير نشط`} />
-        <StatCard icon={<FileBarChart size={16} />} label="الطلبات" value={s.orders.toLocaleString()} accent={BRAND.blue} />
+        <StatCard icon={<Users size={16} />} label={tr("المناديب")} value={s.total} accent={CMETA[company].color} sub={`${s.active} ${tr("نشط")} · ${s.inactiveCount} ${tr("غير نشط")}`} />
+        <StatCard icon={<FileBarChart size={16} />} label={tr("الطلبات")} value={s.orders.toLocaleString()} accent={BRAND.blue} />
         <StatCard icon={<Banknote size={16} />} label="COD" value={omr(s.cod)} accent={BRAND.navy} />
-        <StatCard icon={<AlertTriangle size={16} />} label="المتبقي" value={omr(s.remaining)} accent="#c0341d" />
+        <StatCard icon={<AlertTriangle size={16} />} label={tr("المتبقي")} value={omr(s.remaining)} accent="#c0341d" />
       </div>
       <div className="grid md:grid-cols-2 gap-3">
         <Card className="p-5">
-          <h3 className="font-bold text-slate-800 mb-3">لم يعملوا بالأمس</h3>
-          {s.didntWorkYest.length === 0 ? <p className="text-sm text-slate-400">الجميع عمل بالأمس.</p> :
-            <ul className="space-y-1 text-sm">{s.didntWorkYest.map((r) => <li key={r.id} className="flex justify-between border-b border-slate-50 py-1"><span>{r.name}</span><span className="text-slate-400 text-xs">{r.lastWorked || "لم يعمل"}</span></li>)}</ul>}
+          <h3 className="font-bold text-slate-800 mb-3">{tr("لم يعملوا بالأمس")}</h3>
+          {s.didntWorkYest.length === 0 ? <p className="text-sm text-slate-400">{tr("الجميع عمل بالأمس.")}</p> :
+            <ul className="space-y-1 text-sm">{s.didntWorkYest.map((r) => <li key={r.id} className="flex justify-between border-b border-slate-50 py-1"><span>{r.name}</span><span className="text-slate-400 text-xs">{r.lastWorked || tr("لم يعمل")}</span></li>)}</ul>}
         </Card>
         <Card className="p-5" style={s.inactive.length ? { background: "#fff1ee" } : {}}>
-          <h3 className="font-bold mb-3 flex items-center gap-2" style={{ color: s.inactive.length ? "#c0341d" : "#1e293b" }}><AlertTriangle size={18} /> غير نشطين ({NO_WORK_DAYS}+ أيام)</h3>
-          {s.inactive.length === 0 ? <p className="text-sm text-slate-400">لا يوجد.</p> :
-            <ul className="space-y-1 text-sm">{s.inactive.map((r) => <li key={r.id} className="flex justify-between py-1"><span className="font-semibold" style={{ color: "#c0341d" }}>{r.name} 🔴</span><span className="text-xs">{daysSince(r.lastWorked)} يوم — تواصل معه</span></li>)}</ul>}
+          <h3 className="font-bold mb-3 flex items-center gap-2" style={{ color: s.inactive.length ? "#c0341d" : "#1e293b" }}><AlertTriangle size={18} /> {tr("غير نشطين")} ({NO_WORK_DAYS}+ {tr("أيام")})</h3>
+          {s.inactive.length === 0 ? <p className="text-sm text-slate-400">{tr("لا يوجد.")}</p> :
+            <ul className="space-y-1 text-sm">{s.inactive.map((r) => <li key={r.id} className="flex justify-between py-1"><span className="font-semibold" style={{ color: "#c0341d" }}>{r.name} 🔴</span><span className="text-xs">{daysSince(r.lastWorked)} {tr("يوم — تواصل معه")}</span></li>)}</ul>}
         </Card>
       </div>
     </div>
@@ -666,9 +920,9 @@ function OrdersTab({ company, db, save }) {
     save({ ...db, imports: [...db.imports, imp], riders });
   };
   const note = {
-    Talabat: "الطلبات: فريلانسر فقط. تُقرأ الطلبات و COD والمبلغ المطلوب تحويله من الشيت.",
-    Snoonu: "سنونو: فريلانسر = 1.400/طلب · Full Time = 425 ثابت. COD يحوّل يومياً · الفريلانسر كل 10 أيام.",
-    Aramex: "أرامكس: فريلانسر = 0.700/طلب · Full Time = 200 ثابت + (≥300 طلب: +200 و 0.700 للطلب الإضافي) وإلا 0.600/طلب.",
+    Talabat: tr("الطلبات: فريلانسر فقط. تُقرأ الطلبات و COD والمبلغ المطلوب تحويله من الشيت."),
+    Snoonu: tr("سنونو: فريلانسر = 1.400/طلب · Full Time = 425 ثابت. COD يحوّل يومياً · الفريلانسر كل 10 أيام."),
+    Aramex: tr("أرامكس: فريلانسر = 0.700/طلب · Full Time = 200 ثابت + (≥300 طلب: +200 و 0.700 للطلب الإضافي) وإلا 0.600/طلب."),
   }[company];
   return (
     <div className="space-y-5">
@@ -677,20 +931,20 @@ function OrdersTab({ company, db, save }) {
       {latest && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-slate-800">آخر رفع — {latest.date} · {latest.fileName}</h3>
-            <Btn kind="ghost" size="sm" onClick={() => exportExcel(latest.results.map((r) => ({ المندوب: r.name, الطلبات: r.orders, COD: r.cod, مطلوب_تحويله: r.transferDue, الحالة: r.matched ? "مطابق" : "غير مسجل" })), `${company}_${latest.date}`)}><Download size={14} /> Excel</Btn>
+            <h3 className="font-bold text-slate-800">{t("آخر رفع —","Last upload —")} {latest.date} · {latest.fileName}</h3>
+            <Btn kind="ghost" size="sm" onClick={() => exportExcel(latest.results.map((r) => ({ المندوب: r.name, الطلبات: r.orders, COD: r.cod, مطلوب_تحويله: r.transferDue, الحالة: r.matched ? tr("مطابق") : tr("غير مسجل") })), `${company}_${latest.date}`)}><Download size={14} /> Excel</Btn>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-                {["المندوب", "الطلبات", "COD", "مطلوب تحويله", "الحالة"].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
+                {[tr("المندوب"), tr("الطلبات"), "COD", tr("مطلوب تحويله"), tr("الحالة")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
               </tr></thead>
               <tbody>
                 {latest.results.map((r, i) => (
                   <tr key={i} className="border-b border-slate-50">
                     <td className="py-2 px-3 font-semibold text-slate-800">{r.name}</td>
                     <td className="px-3">{r.orders}</td><td className="px-3">{omr(r.cod)}</td><td className="px-3">{omr(r.transferDue)}</td>
-                    <td className="px-3">{r.matched ? <Pill color="#0f9d58">مطابق</Pill> : <Pill color="#c0341d">غير مسجل</Pill>}</td>
+                    <td className="px-3">{r.matched ? <Pill color="#0f9d58">{tr("مطابق")}</Pill> : <Pill color="#c0341d">{tr("غير مسجل")}</Pill>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -698,8 +952,8 @@ function OrdersTab({ company, db, save }) {
           </div>
           {latest.notWorkedIds.length > 0 && (
             <div className="mt-4 p-3 rounded-lg" style={{ background: "#fff1ee" }}>
-              <p className="text-xs font-semibold mb-1" style={{ color: "#c0341d" }}>لم يظهروا في الشيت (لم يعملوا): {latest.notWorkedIds.length}</p>
-              <p className="text-xs text-slate-600">{db.riders.filter((r) => latest.notWorkedIds.includes(r.id)).map((r) => r.name).join("، ")}</p>
+              <p className="text-xs font-semibold mb-1" style={{ color: "#c0341d" }}>{tr("لم يظهروا في الشيت (لم يعملوا):")} {latest.notWorkedIds.length}</p>
+              <p className="text-xs text-slate-600">{db.riders.filter((r) => latest.notWorkedIds.includes(r.id)).map((r) => r.name).join(tr("، "))}</p>
             </div>
           )}
         </Card>
@@ -713,19 +967,19 @@ function TransfersTab({ company, db, save }) {
   const rIds = new Set(db.riders.filter((r) => r.company === company).map((r) => r.id));
   const list = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
-  const setStatus = (id, status) => save({ ...db, transfers: db.transfers.map((t) => (t.id === id ? { ...t, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: status === "Approved" ? "قبول يدوي" : "رفض يدوي" } : t)) });
+  const setStatus = (id, status) => save({ ...db, transfers: db.transfers.map((t) => (t.id === id ? { ...t, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي") } : t)) });
   const pending = list.filter((t) => t.status === "Pending").length;
   return (
     <div className="space-y-4">
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-slate-800">COD والتحويلات — {CMETA[company].ar} {pending > 0 && <Pill color="#d97706">{pending} قيد المراجعة</Pill>}</h3>
+          <h3 className="font-bold text-slate-800">{t("COD والتحويلات","COD & Transfers")} — {cLabel(company)} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
           <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((t) => ({ المندوب: riderName(t.riderId), المبلغ: t.amount, المرجع: t.reference, التاريخ: t.date, الحالة: t.status, التصنيف: t.reconLabel || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-              {["المندوب", "المبلغ", "المرجع", "التاريخ", "الإيصال", "التصنيف", "إجراء"].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
+              {[tr("المندوب"), tr("المبلغ"), tr("المرجع"), tr("التاريخ"), tr("الإيصال"), tr("التصنيف"), tr("إجراء")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
             </tr></thead>
             <tbody>
               {list.map((t) => (
@@ -735,19 +989,19 @@ function TransfersTab({ company, db, save }) {
                   <td className="px-3" dir="ltr">{t.reference}</td>
                   <td className="px-3 text-slate-500">{t.date}</td>
                   <td className="px-3">{t.receipt ? <button onClick={() => setViewReceipt(t.receipt)} className="text-slate-500 hover:text-slate-800"><Eye size={16} /></button> : "—"}</td>
-                  <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{t.reconLabel}</Pill> : <Pill color="#d97706">قيد المراجعة</Pill>}</td>
+                  <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}</td>
                   <td className="px-3 flex gap-1 py-2">
-                    <button onClick={() => setStatus(t.id, "Approved")} title="قبول" className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
-                    <button onClick={() => setStatus(t.id, "Rejected")} title="رفض" className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
+                    <button onClick={() => setStatus(t.id, "Approved")} title={tr("قبول")} className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
+                    <button onClick={() => setStatus(t.id, "Rejected")} title={tr("رفض")} className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
                   </td>
                 </tr>
               ))}
-              {list.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-slate-400">لا توجد تحويلات</td></tr>}
+              {list.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات")}</td></tr>}
             </tbody>
           </table>
         </div>
       </Card>
-      <Modal open={!!viewReceipt} onClose={() => setViewReceipt(null)} title="إيصال البنك">{viewReceipt && <img src={viewReceipt} alt="إيصال" className="w-full rounded-lg" />}</Modal>
+      <Modal open={!!viewReceipt} onClose={() => setViewReceipt(null)} title={tr("إيصال البنك")}>{viewReceipt && <img src={viewReceipt} alt={tr("إيصال")} className="w-full rounded-lg" />}</Modal>
     </div>
   );
 }
@@ -763,16 +1017,16 @@ function ReconTab({ company, db, save }) {
       const wb = XLSX.read(buf);
       const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
       const hs = (data[0] || []).map((x) => String(x).toLowerCase());
-      const refI = hs.findIndex((h) => h.includes("ref") || h.includes("مرجع"));
-      const amtI = hs.findIndex((h) => h.includes("amount") || h.includes("credit") || h.includes("مبلغ"));
-      const dateI = hs.findIndex((h) => h.includes("date") || h.includes("تاريخ"));
+      const refI = hs.findIndex((h) => h.includes("ref") || h.includes(tr("مرجع")));
+      const amtI = hs.findIndex((h) => h.includes("amount") || h.includes("credit") || h.includes(tr("مبلغ")));
+      const dateI = hs.findIndex((h) => h.includes("date") || h.includes(tr("تاريخ")));
       const rows = data.slice(1).map((r) => ({
         reference: String(r[refI >= 0 ? refI : 0]).trim(),
         amount: Number(r[amtI >= 0 ? amtI : 1]) || 0,
         date: dateI >= 0 ? String(r[dateI]).slice(0, 10) : "",
       })).filter((r) => r.reference);
       save({ ...db, bankRows: { ...db.bankRows, [company]: rows } });
-      setMsg(`تم تحميل ${rows.length} عملية من كشف ${CMETA[company].ar}.`);
+      setMsg(`${tr("تم تحميل")} ${rows.length} ${tr("عملية من كشف")} ${cLabel(company)}.`);
     });
     e.target.value = "";
   };
@@ -783,26 +1037,26 @@ function ReconTab({ company, db, save }) {
       return { ...t, status: c.status, recon: c.code, reconLabel: `${c.emoji} ${c.label}` };
     });
     save({ ...db, transfers });
-    setMsg("تمت المطابقة الآلية.");
+    setMsg(tr("تمت المطابقة الآلية."));
   };
   const results = db.transfers.filter((t) => rIds.has(t.riderId)).map((t) => ({ t, c: classifyTransfer(t, bank) }));
   const counts = results.reduce((a, { c }) => { a[c.code] = (a[c.code] || 0) + 1; return a; }, {});
   const legend = [
-    { code: "ok", label: "✅ تحويل صحيح" }, { code: "not_found", label: "❌ لم يُعثر عليه" },
-    { code: "ref_diff", label: "⚠️ اختلاف مرجعي" }, { code: "amount_diff", label: "⚠️ اختلاف مبلغ" },
-    { code: "date_diff", label: "⚠️ مراجعة (تاريخ)" }, { code: "suspect", label: "⚠️ إشعار مشكوك" },
+    { code: "ok", label: tr("✅ تحويل صحيح") }, { code: "not_found", label: tr("❌ لم يُعثر عليه") },
+    { code: "ref_diff", label: tr("⚠️ اختلاف مرجعي") }, { code: "amount_diff", label: tr("⚠️ اختلاف مبلغ") },
+    { code: "date_diff", label: tr("⚠️ مراجعة (تاريخ)") }, { code: "suspect", label: tr("⚠️ إشعار مشكوك") },
   ];
   return (
     <div className="space-y-4">
       <Card className="p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h3 className="font-bold text-slate-800 flex items-center gap-2"><ShieldCheck size={18} /> المطابقة البنكية — {CMETA[company].ar}</h3>
-            <p className="text-xs text-slate-500 mt-1">يقارن الرقم المرجعي والمبلغ والتاريخ، ويصنّف كل عملية آلياً.</p>
+            <h3 className="font-bold text-slate-800 flex items-center gap-2"><ShieldCheck size={18} /> {t("المطابقة البنكية","Bank Reconciliation")} — {cLabel(company)}</h3>
+            <p className="text-xs text-slate-500 mt-1">{tr("يقارن الرقم المرجعي والمبلغ والتاريخ، ويصنّف كل عملية آلياً.")}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <input type="file" accept=".xlsx,.xls,.csv" onChange={onBank} className="text-sm file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-xs file:font-semibold" />
-            <Btn kind="blue" onClick={reconcile}><RefreshCw size={15} /> تشغيل المطابقة</Btn>
+            <Btn kind="blue" onClick={reconcile}><RefreshCw size={15} /> {tr("تشغيل المطابقة")}</Btn>
           </div>
         </div>
         {msg && <p className="text-xs text-green-700 mt-3">{msg}</p>}
@@ -814,11 +1068,11 @@ function ReconTab({ company, db, save }) {
       </Card>
       {bank.length > 0 && (
         <Card className="p-5">
-          <h3 className="font-bold text-slate-800 mb-3">نتيجة التصنيف</h3>
+          <h3 className="font-bold text-slate-800 mb-3">{tr("نتيجة التصنيف")}</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-                {["المندوب", "المبلغ", "المرجع", "التاريخ", "التصنيف"].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
+                {[tr("المندوب"), tr("المبلغ"), tr("المرجع"), tr("التاريخ"), tr("التصنيف")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
               </tr></thead>
               <tbody>
                 {results.slice().reverse().map(({ t, c }) => (
@@ -826,10 +1080,10 @@ function ReconTab({ company, db, save }) {
                     <td className="py-2 px-3 font-semibold text-slate-800">{riderName(t.riderId)}</td>
                     <td className="px-3">{omr(t.amount)}</td><td className="px-3" dir="ltr">{t.reference}</td>
                     <td className="px-3 text-slate-500">{t.date}</td>
-                    <td className="px-3"><Pill color={c.color}>{c.emoji} {c.label}</Pill></td>
+                    <td className="px-3"><Pill color={c.color}>{c.emoji} {tr(c.label)}</Pill></td>
                   </tr>
                 ))}
-                {results.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-slate-400">لا توجد تحويلات للمطابقة</td></tr>}
+                {results.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات للمطابقة")}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -855,15 +1109,15 @@ function AttendanceTab({ company, db, save }) {
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-        <h3 className="font-bold text-slate-800 flex items-center gap-2"><CalendarCheck size={18} /> الحضور والانصراف — {CMETA[company].ar}</h3>
+        <h3 className="font-bold text-slate-800 flex items-center gap-2"><CalendarCheck size={18} /> {t("الحضور والانصراف","Attendance")} — {cLabel(company)}</h3>
         <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" />
-          <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder="بحث بالاسم أو الهاتف..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={tr("بحث بالاسم أو الهاتف...")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       </div>
       <p className="text-xs text-slate-500 mb-4">يُسجّل تلقائياً من ملف الطلبات: أي مندوب في الملف = حاضر ✓، وأي اسم غير موجود = غائب ✗. الأيام بدون ملف قابلة للتسجيل اليدوي. الأحمر = غير نشط {NO_WORK_DAYS}+ أيام.</p>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead><tr className="text-slate-500 border-b border-slate-200">
-            <th className="py-2 px-2 text-right font-semibold sticky right-0 bg-white">المندوب</th>
+            <th className="py-2 px-2 text-right font-semibold sticky right-0 bg-white">{tr("المندوب")}</th>
             {days.map((d) => <th key={d} className="py-2 px-1 font-semibold text-center whitespace-nowrap">{d.slice(5)}</th>)}
           </tr></thead>
           <tbody>
@@ -885,7 +1139,7 @@ function AttendanceTab({ company, db, save }) {
                 </tr>
               );
             })}
-            {riders.length === 0 && <tr><td colSpan={days.length + 1} className="py-6 text-center text-slate-400">لا نتائج</td></tr>}
+            {riders.length === 0 && <tr><td colSpan={days.length + 1} className="py-6 text-center text-slate-400">{tr("لا نتائج")}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -895,28 +1149,28 @@ function AttendanceTab({ company, db, save }) {
 
 function ReportsScoped({ db, company }) {
   const [type, setType] = useState("cod");
-  const types = { cod: "تقرير COD", notworked: "لم يعملوا / غير نشطين", freelancer: "مستحقات الفريلانسر", fulltime: "رواتب Full Time", riders: "كل المناديب" };
+  const types = { cod: tr("تقرير COD"), notworked: tr("لم يعملوا / غير نشطين"), freelancer: tr("مستحقات الفريلانسر"), fulltime: tr("رواتب Full Time"), riders: tr("كل المناديب") };
   const rs = db.riders.filter((r) => !company || r.company === company);
   const rows = useMemo(() => {
-    if (type === "cod") return rs.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: CMETA[r.company].ar, COD_للتحويل: m.codToTransfer, المحوّل: m.transferred, المتبقي: m.owed }; });
-    if (type === "notworked") return rs.filter((r) => r.status === "Active" && daysSince(r.lastWorked) >= NO_WORK_DAYS).map((r) => ({ المندوب: r.name, الشركة: CMETA[r.company].ar, آخر_عمل: r.lastWorked || "—", الأيام: daysSince(r.lastWorked) }));
-    if (type === "freelancer") return rs.filter((r) => r.type === "Freelancer").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: CMETA[r.company].ar, الطلبات: m.orders, المستحق: m.earn }; });
-    if (type === "fulltime") return rs.filter((r) => r.type === "Full Time").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: CMETA[r.company].ar, الطلبات: m.orders, الراتب: m.earn }; });
-    return rs.map((r) => ({ المندوب: r.name, الهاتف: r.phone, المدني: r.civil || "", الشركة: CMETA[r.company].ar, النوع: r.type, الحالة: r.status }));
+    if (type === "cod") return rs.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), COD_للتحويل: m.codToTransfer, المحوّل: m.transferred, المتبقي: m.owed }; });
+    if (type === "notworked") return rs.filter((r) => r.status === "Active" && daysSince(r.lastWorked) >= NO_WORK_DAYS).map((r) => ({ المندوب: r.name, الشركة: cLabel(r.company), آخر_عمل: r.lastWorked || "—", الأيام: daysSince(r.lastWorked) }));
+    if (type === "freelancer") return rs.filter((r) => r.type === "Freelancer").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), الطلبات: m.orders, المستحق: m.earn }; });
+    if (type === "fulltime") return rs.filter((r) => r.type === "Full Time").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), الطلبات: m.orders, الراتب: m.earn }; });
+    return rs.map((r) => ({ المندوب: r.name, الهاتف: r.phone, المدني: r.civil || "", الشركة: cLabel(r.company), النوع: r.type, الحالة: r.status }));
   }, [type, db, company]);
   const cols = rows[0] ? Object.keys(rows[0]) : [];
   return (
     <div className="space-y-4">
       <Card className="p-5"><div className="flex items-center justify-between gap-3 flex-wrap">
-        <Field label="نوع التقرير"><select className={inputCls + " w-72"} value={type} onChange={(e) => setType(e.target.value)}>{Object.entries(types).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+        <Field label={tr("نوع التقرير")}><select className={inputCls + " w-72"} value={type} onChange={(e) => setType(e.target.value)}>{Object.entries(types).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <div className="flex gap-2 pt-5"><Btn kind="ghost" onClick={() => exportExcel(rows, `${company || "All"}_${types[type]}`)}><Download size={15} /> Excel</Btn><Btn kind="ghost" onClick={() => window.print()}><Printer size={15} /> PDF</Btn></div>
       </div></Card>
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3">{types[type]}</h3>
         <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{cols.map((c) => <th key={c} className="py-2 px-3 font-semibold">{c.replace(/_/g, " ")}</th>)}</tr></thead>
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{cols.map((c) => <th key={c} className="py-2 px-3 font-semibold">{tr(c).replace(/_/g, " ")}</th>)}</tr></thead>
           <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-slate-50">{cols.map((c) => <td key={c} className="py-2 px-3">{typeof r[c] === "number" && /COD|مستحق|راتب|محوّل|متبقي/.test(c) ? omr(r[c]) : r[c]}</td>)}</tr>)}
-            {rows.length === 0 && <tr><td colSpan={cols.length || 1} className="py-6 text-center text-slate-400">لا بيانات</td></tr>}</tbody>
+            {rows.length === 0 && <tr><td colSpan={cols.length || 1} className="py-6 text-center text-slate-400">{tr("لا بيانات")}</td></tr>}</tbody>
         </table></div>
       </Card>
     </div>
@@ -924,14 +1178,14 @@ function ReportsScoped({ db, company }) {
 }
 
 const CTABS = [
-  { key: "overview", ar: "نظرة عامة", en: "Overview", icon: LayoutDashboard },
-  { key: "riders", ar: "المناديب", en: "Riders", icon: Users },
-  { key: "orders", ar: "الطلبات", en: "Orders", icon: Truck },
-  { key: "transfers", ar: "COD والتحويلات", en: "COD & Transfers", icon: Wallet },
-  { key: "recon", ar: "المطابقة البنكية", en: "Bank Reconciliation", icon: ShieldCheck },
-  { key: "attendance", ar: "الحضور والنشاط", en: "Attendance", icon: CalendarCheck },
-  { key: "shifts", ar: "الشفتات", en: "Shifts", icon: Clock },
-  { key: "reports", ar: "التقارير", en: "Reports", icon: FileBarChart },
+  { key: "overview", ar: tr("نظرة عامة"), en: "Overview", icon: LayoutDashboard },
+  { key: "riders", ar: tr("المناديب"), en: "Riders", icon: Users },
+  { key: "orders", ar: tr("الطلبات"), en: "Orders", icon: Truck },
+  { key: "transfers", ar: tr("COD والتحويلات"), en: "COD & Transfers", icon: Wallet },
+  { key: "recon", ar: tr("المطابقة البنكية"), en: "Bank Reconciliation", icon: ShieldCheck },
+  { key: "attendance", ar: tr("الحضور والنشاط"), en: "Attendance", icon: CalendarCheck },
+  { key: "shifts", ar: tr("الشفتات"), en: "Shifts", icon: Clock },
+  { key: "reports", ar: tr("التقارير"), en: "Reports", icon: FileBarChart },
 ];
 
 function CompanyWindow({ company, db, save }) {
@@ -980,19 +1234,19 @@ function RiderPortal({ db, riderId, creds, refresh }) {
   const myTransfers = db.transfers.filter((t) => t.riderId === riderId).sort((a, b) => b.date.localeCompare(a.date));
   const lastRejected = myTransfers.find((t) => t.status === "Rejected");
   const submit = () => {
-    if (!form.amount || !form.reference) return alert("المبلغ والرقم المرجعي مطلوبان");
+    if (!form.amount || !form.reference) return alert(tr("المبلغ والرقم المرجعي مطلوبان"));
     supabase.rpc("rider_submit_transfer", { p_phone: creds.phone, p_password: creds.password, p_amount: Number(form.amount), p_reference: String(form.reference).trim(), p_date: form.date, p_receipt: form.receipt || "" })
-      .then(({ error }) => { if (error) return alert("تعذّر إرسال التحويل، حاول مرة أخرى"); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
+      .then(({ error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
   };
   const onReceipt = (e) => { const f = e.target.files[0]; if (f) resizeImage(f).then((r) => setForm((s) => ({ ...s, receipt: r }))); };
   const changePw = () => {
-    if (!pwf.cur) return setPwMsg("أدخل كلمة المرور الحالية");
-    if (pwf.nw.length < 4) return setPwMsg("كلمة المرور الجديدة قصيرة (4 خانات على الأقل)");
-    if (pwf.nw !== pwf.cf) return setPwMsg("تأكيد كلمة المرور لا يطابق");
+    if (!pwf.cur) return setPwMsg(tr("أدخل كلمة المرور الحالية"));
+    if (pwf.nw.length < 4) return setPwMsg(tr("كلمة المرور الجديدة قصيرة (4 خانات على الأقل)"));
+    if (pwf.nw !== pwf.cf) return setPwMsg(tr("تأكيد كلمة المرور لا يطابق"));
     supabase.rpc("rider_change_password", { p_phone: creds.phone, p_old: pwf.cur, p_new: pwf.nw }).then(({ data, error }) => {
-      if (error || !data) return setPwMsg("كلمة المرور الحالية غير صحيحة");
+      if (error || !data) return setPwMsg(tr("كلمة المرور الحالية غير صحيحة"));
       creds.password = pwf.nw; try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {}
-      setPwf({ cur: "", nw: "", cf: "" }); setPwMsg("✅ تم تغيير كلمة المرور بنجاح");
+      setPwf({ cur: "", nw: "", cf: "" }); setPwMsg(tr("✅ تم تغيير كلمة المرور بنجاح"));
     });
   };
   return (
@@ -1006,52 +1260,52 @@ function RiderPortal({ db, riderId, creds, refresh }) {
       {(m.owed > 0.001 || lastRejected) && (
         <Card className="p-4 border-r-4" style={{ borderColor: "#c0341d", background: "#fff1ee" }}>
           <div className="flex items-start gap-2"><AlertTriangle size={18} color="#c0341d" className="mt-0.5" /><div className="text-sm">
-            {m.owed > 0.001 && <p style={{ color: "#c0341d" }} className="font-semibold">لديك مبلغ COD لم تحوّله: {omr(m.owed)}</p>}
+            {m.owed > 0.001 && <p style={{ color: "#c0341d" }} className="font-semibold">{tr("لديك مبلغ COD لم تحوّله:")} {omr(m.owed)}</p>}
             {lastRejected && <p className="text-slate-700 mt-1" dir="ltr">Your transfer was rejected. Please transfer again or upload the correct receipt.</p>}
           </div></div>
         </Card>
       )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={<FileBarChart size={16} />} label="الطلبات" value={m.orders} accent={BRAND.blue} />
-        <StatCard icon={<Banknote size={16} />} label="COD للتحويل" value={omr(m.owed)} accent="#c0341d" />
-        <StatCard icon={<Wallet size={16} />} label={rider.type === "Full Time" ? "الراتب الشهري" : "المستحق لك"} value={omr(m.earn)} accent="#0f9d58" />
-        <StatCard icon={<CheckCircle2 size={16} />} label="المحوّل" value={omr(m.transferred)} accent={BRAND.navy} />
+        <StatCard icon={<FileBarChart size={16} />} label={tr("الطلبات")} value={m.orders} accent={BRAND.blue} />
+        <StatCard icon={<Banknote size={16} />} label={tr("COD للتحويل")} value={omr(m.owed)} accent="#c0341d" />
+        <StatCard icon={<Wallet size={16} />} label={rider.type === "Full Time" ? tr("الراتب الشهري") : tr("المستحق لك")} value={omr(m.earn)} accent="#0f9d58" />
+        <StatCard icon={<CheckCircle2 size={16} />} label={tr("المحوّل")} value={omr(m.transferred)} accent={BRAND.navy} />
       </div>
       <Card className="p-5">
-        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} /> تحويل COD</h3>
+        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} / {tr("تحويل COD")}</h3>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="قيمة المبلغ المحوّل (OMR)"><input className={inputCls} type="number" step="0.001" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
-          <Field label="الرقم المرجعي"><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
-          <Field label="تاريخ التحويل"><input className={inputCls} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <Field label="صورة الإيصال"><input className={inputCls} type="file" accept="image/*" onChange={onReceipt} /></Field>
+          <Field label={tr("قيمة المبلغ المحوّل (OMR)")}><input className={inputCls} type="number" step="0.001" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+          <Field label={tr("الرقم المرجعي")}><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
+          <Field label={tr("تاريخ التحويل")}><input className={inputCls} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label={tr("صورة الإيصال")}><input className={inputCls} type="file" accept="image/*" onChange={onReceipt} /></Field>
         </div>
-        {form.receipt && <img src={form.receipt} alt="إيصال" className="mt-3 h-28 rounded-lg border border-slate-200" />}
-        <div className="mt-4"><Btn onClick={submit}>إرسال التحويل</Btn></div>
+        {form.receipt && <img src={form.receipt} alt={tr("إيصال")} className="mt-3 h-28 rounded-lg border border-slate-200" />}
+        <div className="mt-4"><Btn onClick={submit}>{tr("إرسال التحويل")}</Btn></div>
       </Card>
       <Card className="p-5">
-        <h3 className="font-bold text-slate-800 mb-3">سجل التحويلات</h3>
+        <h3 className="font-bold text-slate-800 mb-3">{tr("سجل التحويلات")}</h3>
         <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{["التاريخ", "المبلغ", "المرجع", "الحالة"].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("المبلغ"), tr("المرجع"), tr("الحالة")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
           <tbody>
             {myTransfers.map((t) => (
               <tr key={t.id} className="border-b border-slate-50">
                 <td className="py-2 px-3">{t.date}</td><td className="px-3">{omr(t.amount)}</td><td className="px-3" dir="ltr">{t.reference}</td>
-                <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{t.reconLabel}</Pill> : <Pill color="#d97706">قيد المراجعة</Pill>}</td>
+                <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}</td>
               </tr>
             ))}
-            {myTransfers.length === 0 && <tr><td colSpan={4} className="py-6 text-center text-slate-400">لا توجد تحويلات</td></tr>}
+            {myTransfers.length === 0 && <tr><td colSpan={4} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات")}</td></tr>}
           </tbody>
         </table></div>
       </Card>
       <Card className="p-5">
-        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><KeyRound size={18} /> تغيير كلمة المرور</h3>
+        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><KeyRound size={18} /> {tr("تغيير كلمة المرور")}</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="كلمة المرور الحالية"><input type="password" className={inputCls} value={pwf.cur} onChange={(e) => setPwf({ ...pwf, cur: e.target.value })} /></Field>
-          <Field label="كلمة المرور الجديدة"><input type="password" className={inputCls} value={pwf.nw} onChange={(e) => setPwf({ ...pwf, nw: e.target.value })} /></Field>
-          <Field label="تأكيد كلمة المرور"><input type="password" className={inputCls} value={pwf.cf} onChange={(e) => setPwf({ ...pwf, cf: e.target.value })} /></Field>
+          <Field label={tr("كلمة المرور الحالية")}><input type="password" className={inputCls} value={pwf.cur} onChange={(e) => setPwf({ ...pwf, cur: e.target.value })} /></Field>
+          <Field label={tr("كلمة المرور الجديدة")}><input type="password" className={inputCls} value={pwf.nw} onChange={(e) => setPwf({ ...pwf, nw: e.target.value })} /></Field>
+          <Field label={tr("تأكيد كلمة المرور")}><input type="password" className={inputCls} value={pwf.cf} onChange={(e) => setPwf({ ...pwf, cf: e.target.value })} /></Field>
         </div>
         {pwMsg && <p className="text-xs mt-3" style={{ color: pwMsg.charAt(0) === "\u2705" ? "#0f9d58" : "#c0341d" }}>{pwMsg}</p>}
-        <div className="mt-4"><Btn onClick={changePw}>حفظ كلمة المرور</Btn></div>
+        <div className="mt-4"><Btn onClick={changePw}>{tr("حفظ كلمة المرور")}</Btn></div>
       </Card>
     </div>
   );
@@ -1080,22 +1334,22 @@ function ShiftsWindow({ db, save, company = null }) {
     <div className="space-y-5">
       {!company && (<div className="flex items-center gap-2 pb-1">
         <span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.navy }}><Clock size={18} color="#fff" /></span>
-        <h2 className="font-extrabold text-lg text-slate-800">الشفتات — كل الشركات</h2>
+        <h2 className="font-extrabold text-lg text-slate-800">{tr("الشفتات — كل الشركات")}</h2>
       </div>)}
 
       <Card className="p-5">
-        <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><CalendarCheck size={18} color={BRAND.orange} /> روستر اليوم ({DAY_AR[tc]})</h3>
-        <p className="text-xs text-slate-500 mb-4">المناديب المتوقّع دوامهم اليوم مرتّبين حسب وقت الشفت — تواصل معهم قبل البداية للتأكد من الحضور.</p>
-        {roster.length === 0 ? <p className="text-sm text-slate-400">لا توجد شفتات مسجّلة لليوم. عيّن الشفتات من الجدول بالأسفل.</p> : (
+        <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><CalendarCheck size={18} color={BRAND.orange} /> {tr("روستر اليوم")} ({tr(DAY_AR[tc])})</h3>
+        <p className="text-xs text-slate-500 mb-4">{tr("المناديب المتوقّع دوامهم اليوم مرتّبين حسب وقت الشفت — تواصل معهم قبل البداية للتأكد من الحضور.")}</p>
+        {roster.length === 0 ? <p className="text-sm text-slate-400">{tr("لا توجد شفتات مسجّلة لليوم. عيّن الشفتات من الجدول بالأسفل.")}</p> : (
           <div className="space-y-2">
             {roster.map((r) => {
               const started = workedToday(r.id);
               return (
                 <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100">
-                  <div className="w-16 text-center"><div className="font-extrabold text-slate-800">{r.shiftStart || "—"}</div><div className="text-[10px] text-slate-400">{r.shiftEnd ? "حتى " + r.shiftEnd : ""}</div></div>
+                  <div className="w-16 text-center"><div className="font-extrabold text-slate-800">{r.shiftStart || "—"}</div><div className="text-[10px] text-slate-400">{r.shiftEnd ? tr("حتى ") + r.shiftEnd : ""}</div></div>
                   <div className="flex-1"><div className="font-semibold text-slate-800">{r.name} {companyPill(r.company)}</div><div className="text-xs text-slate-500" dir="ltr">{r.phone}</div></div>
-                  {started ? <Pill color="#0f9d58">بدأ الشفت ✓</Pill> :
-                    <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "#fff1ee", color: "#c0341d" }}><Phone size={13} /> لم يبدأ — اتصل</a>}
+                  {started ? <Pill color="#0f9d58">{tr("بدأ الشفت ✓")}</Pill> :
+                    <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "#fff1ee", color: "#c0341d" }}><Phone size={13} /> {tr("لم يبدأ — اتصل")}</a>}
                 </div>
               );
             })}
@@ -1105,48 +1359,48 @@ function ShiftsWindow({ db, save, company = null }) {
 
       <Card className="p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-          <h3 className="font-bold text-slate-800">تعيين الشفتات</h3>
+          <h3 className="font-bold text-slate-800">{tr("تعيين الشفتات")}</h3>
           <div className="flex gap-2">
-            {!company && <select className={inputCls + " w-36"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">كل الشركات</option>{COMPANIES.map((c) => <option key={c} value={c}>{CMETA[c].ar}</option>)}</select>}
-            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-48" placeholder="بحث..." value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            {!company && <select className={inputCls + " w-36"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">{tr("كل الشركات")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>}
+            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-48" placeholder={tr("بحث...")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           </div>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-            {["المندوب", "الشركة", "النوع", "وقت الشفت", "الأيام", ""].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
+            {[tr("المندوب"), tr("الشركة"), tr("النوع"), tr("وقت الشفت"), tr("الأيام"), ""].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
             {list.map((r) => (
               <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
                 <td className="py-2 px-3 font-semibold text-slate-800">{r.name}</td>
                 <td className="px-3">{companyPill(r.company)}</td>
-                <td className="px-3 text-slate-600">{r.type === "Freelancer" ? "فريلانسر" : "ثابت"}</td>
+                <td className="px-3 text-slate-600">{r.type === "Freelancer" ? tr("فريلانسر") : tr("ثابت")}</td>
                 <td className="px-3">{r.shiftStart ? <span className="font-semibold">{r.shiftStart}{r.shiftEnd ? " - " + r.shiftEnd : ""}</span> : <span className="text-slate-400">—</span>}</td>
-                <td className="px-3 text-xs text-slate-500">{(r.shiftDays && r.shiftDays.length) ? r.shiftDays.map((d) => DAY_AR[d]).join("، ") : "—"}</td>
-                <td className="px-3"><Btn kind="ghost" size="sm" onClick={() => openEdit(r)}><Pencil size={13} /> شفت</Btn></td>
+                <td className="px-3 text-xs text-slate-500">{(r.shiftDays && r.shiftDays.length) ? r.shiftDays.map((d) => DAY_AR[d]).join(tr("، ")) : "—"}</td>
+                <td className="px-3"><Btn kind="ghost" size="sm" onClick={() => openEdit(r)}><Pencil size={13} /> {tr("شفت")}</Btn></td>
               </tr>
             ))}
-            {list.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-400">لا نتائج</td></tr>}
+            {list.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-400">{tr("لا نتائج")}</td></tr>}
           </tbody>
         </table></div>
       </Card>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? "شفت — " + editing.name : ""}>
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? tr("شفت — ") + editing.name : ""}>
         {editing && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <Field label="بداية الشفت"><input type="time" className={inputCls} value={editing.shiftStart} onChange={(e) => setEditing({ ...editing, shiftStart: e.target.value })} /></Field>
-              <Field label="نهاية الشفت"><input type="time" className={inputCls} value={editing.shiftEnd} onChange={(e) => setEditing({ ...editing, shiftEnd: e.target.value })} /></Field>
+              <Field label={tr("بداية الشفت")}><input type="time" className={inputCls} value={editing.shiftStart} onChange={(e) => setEditing({ ...editing, shiftStart: e.target.value })} /></Field>
+              <Field label={tr("نهاية الشفت")}><input type="time" className={inputCls} value={editing.shiftEnd} onChange={(e) => setEditing({ ...editing, shiftEnd: e.target.value })} /></Field>
             </div>
             <div>
-              <span className="block text-xs font-semibold text-slate-500 mb-2">أيام الدوام</span>
+              <span className="block text-xs font-semibold text-slate-500 mb-2">{tr("أيام الدوام")}</span>
               <div className="flex flex-wrap gap-2">
                 {DAY_CODES.map((d) => { const on = editing.shiftDays.includes(d); return (
                   <button key={d} onClick={() => toggleDay(d)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={on ? { background: BRAND.orange, color: "#fff", borderColor: BRAND.orange } : { background: "#fff", color: "#64748b", borderColor: "#e2e8f0" }}>{DAY_AR[d]}</button>
                 ); })}
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>إلغاء</Btn><Btn onClick={saveShift}>حفظ الشفت</Btn></div>
+            <div className="flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>{tr("إلغاء")}</Btn><Btn onClick={saveShift}>{tr("حفظ الشفت")}</Btn></div>
           </div>
         )}
       </Modal>
@@ -1166,11 +1420,11 @@ function Employees({ db, save }) {
   const list = emps.filter((e) => (cf === "all" || e.company === cf) && (af === "all" || (e.area || "") === af) && (e.name.includes(q) || (e.phone || "").includes(q)));
   const submit = () => {
     const e = { ...editing };
-    if (!e.name) return alert("اسم الموظف مطلوب");
+    if (!e.name) return alert(tr("اسم الموظف مطلوب"));
     const employees = e.id ? emps.map((x) => (x.id === e.id ? e : x)) : [...emps, { ...e, id: uid() }];
     save({ ...db, employees }); setEditing(null);
   };
-  const remove = (id) => { if (window.confirm("حذف هذا الموظف؟")) save({ ...db, employees: emps.filter((x) => x.id !== id) }); };
+  const remove = (id) => { if (window.confirm(tr("حذف هذا الموظف؟"))) save({ ...db, employees: emps.filter((x) => x.id !== id) }); };
   const candidates = editing ? db.riders.filter((r) => r.company === editing.company && (!editing.area || (r.area || "") === editing.area)) : [];
   const toggleRider = (id) => setEditing((e) => ({ ...e, riderIds: e.riderIds.includes(id) ? e.riderIds.filter((x) => x !== id) : [...e.riderIds, id] }));
 
@@ -1179,21 +1433,21 @@ function Employees({ db, save }) {
       <datalist id="mrd-emp-areas">{allAreas.map((a) => <option key={a} value={a} />)}</datalist>
       <div className="flex items-center gap-2 pb-1">
         <span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.navy }}><UserCog size={18} color="#fff" /></span>
-        <h2 className="font-extrabold text-lg text-slate-800">الموظفون والمشرفون</h2>
+        <h2 className="font-extrabold text-lg text-slate-800">{tr("الموظفون والمشرفون")}</h2>
       </div>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-2 flex-wrap items-center">
           <div className="relative"><Search size={16} className="absolute right-3 top-2.5 text-slate-400" />
-            <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-52" placeholder="بحث بالاسم أو الهاتف" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <select className={inputCls + " w-32"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">كل الشركات</option>{COMPANIES.map((c) => <option key={c} value={c}>{CMETA[c].ar}</option>)}</select>
-          <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">كل المناطق</option>{allAreas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
+            <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-52" placeholder={tr("بحث بالاسم أو الهاتف")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <select className={inputCls + " w-32"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">{tr("كل الشركات")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>
+          <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">{tr("كل المناطق")}</option>{allAreas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
         </div>
-        <Btn onClick={() => setEditing(blank)}><Plus size={16} /> إضافة موظف</Btn>
+        <Btn onClick={() => setEditing(blank)}><Plus size={16} /> {tr("إضافة موظف")}</Btn>
       </div>
       <Card className="overflow-hidden"><div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-            {["الموظف", "الهاتف", "الشركة", "المنطقة", "المسؤولية", "المناديب", ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
+            {[tr("الموظف"), tr("الهاتف"), tr("الشركة"), tr("المنطقة"), tr("المسؤولية"), tr("المناديب"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
             {list.map((e) => (
@@ -1202,31 +1456,31 @@ function Employees({ db, save }) {
                 <td className="px-3 text-slate-600" dir="ltr">{e.phone || "—"}</td>
                 <td className="px-3">{companyPill(e.company)}</td>
                 <td className="px-3 text-slate-600">{e.area ? <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-slate-400" />{e.area}</span> : "—"}</td>
-                <td className="px-3"><Pill color={BRAND.blue}>{empRoleAr(e.roleType)}</Pill></td>
-                <td className="px-3 text-slate-600">{e.scope === "all" ? "كل مناديب المنطقة" : `${(e.riderIds || []).length} مندوب`}</td>
+                <td className="px-3"><Pill color={BRAND.blue}>{tr(empRoleAr(e.roleType))}</Pill></td>
+                <td className="px-3 text-slate-600">{e.scope === "all" ? tr("كل مناديب المنطقة") : `${(e.riderIds || []).length} ${tr("مندوب")}`}</td>
                 <td className="px-3 flex gap-2 py-3">
                   <button onClick={() => setEditing({ ...e, riderIds: e.riderIds || [] })} className="text-slate-400 hover:text-slate-700"><Pencil size={16} /></button>
                   <button onClick={() => remove(e.id)} className="text-slate-400 hover:text-red-600"><XCircle size={16} /></button>
                 </td>
               </tr>
             ))}
-            {list.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">لا يوجد موظفون — أضف أول موظف</td></tr>}
+            {list.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">{tr("لا يوجد موظفون — أضف أول موظف")}</td></tr>}
           </tbody>
         </table>
       </div></Card>
 
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? "تعديل موظف" : "إضافة موظف"} wide>
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? tr("تعديل موظف") : tr("إضافة موظف")} wide>
         {editing && (
           <div className="grid grid-cols-2 gap-4">
-            <Field label="الاسم"><input className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
-            <Field label="رقم الهاتف"><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
-            <Field label="الشركة المسؤول عنها"><select className={inputCls} value={editing.company} onChange={(e) => setEditing({ ...editing, company: e.target.value, riderIds: [] })}>{COMPANIES.map((c) => <option key={c} value={c}>{CMETA[c].ar}</option>)}</select></Field>
-            <Field label="المنطقة / المحافظة"><input className={inputCls} list="mrd-emp-areas" value={editing.area} onChange={(e) => setEditing({ ...editing, area: e.target.value, riderIds: [] })} placeholder="نزوى / صحار..." /></Field>
-            <Field label="نوع المسؤولية"><select className={inputCls} value={editing.roleType} onChange={(e) => setEditing({ ...editing, roleType: e.target.value })}>{EMP_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-            <Field label="نطاق المسؤولية"><select className={inputCls} value={editing.scope} onChange={(e) => setEditing({ ...editing, scope: e.target.value })}><option value="all">كل مناديب المنطقة</option><option value="selected">مناديب محددون</option></select></Field>
+            <Field label={tr("الاسم")}><input className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
+            <Field label={tr("رقم الهاتف")}><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
+            <Field label={tr("الشركة المسؤول عنها")}><select className={inputCls} value={editing.company} onChange={(e) => setEditing({ ...editing, company: e.target.value, riderIds: [] })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
+            <Field label={tr("المنطقة / المحافظة")}><input className={inputCls} list="mrd-emp-areas" value={editing.area} onChange={(e) => setEditing({ ...editing, area: e.target.value, riderIds: [] })} placeholder={tr("نزوى / صحار...")} /></Field>
+            <Field label={tr("نوع المسؤولية")}><select className={inputCls} value={editing.roleType} onChange={(e) => setEditing({ ...editing, roleType: e.target.value })}>{EMP_ROLES.map(([v, l]) => <option key={v} value={v}>{tr(l)}</option>)}</select></Field>
+            <Field label={tr("نطاق المسؤولية")}><select className={inputCls} value={editing.scope} onChange={(e) => setEditing({ ...editing, scope: e.target.value })}><option value="all">{tr("كل مناديب المنطقة")}</option><option value="selected">{tr("مناديب محددون")}</option></select></Field>
             {editing.scope === "selected" && (
               <div className="col-span-2">
-                <span className="block text-xs font-semibold text-slate-500 mb-1">اختر المناديب ({candidates.length} في هذا النطاق)</span>
+                <span className="block text-xs font-semibold text-slate-500 mb-1">{tr("اختر المناديب")} ({candidates.length} {tr("في هذا النطاق")})</span>
                 <div className="max-h-44 overflow-auto border border-slate-200 rounded-lg p-2 grid grid-cols-2 gap-1">
                   {candidates.map((r) => (
                     <label key={r.id} className="flex items-center gap-2 text-sm p-1 rounded hover:bg-slate-50">
@@ -1234,12 +1488,12 @@ function Employees({ db, save }) {
                       <span>{r.name}</span><span className="text-xs text-slate-400" dir="ltr">{r.phone}</span>
                     </label>
                   ))}
-                  {candidates.length === 0 && <span className="text-xs text-slate-400 col-span-2 p-2">لا مناديب مطابقون لهذه الشركة/المنطقة</span>}
+                  {candidates.length === 0 && <span className="text-xs text-slate-400 col-span-2 p-2">{tr("لا مناديب مطابقون لهذه الشركة/المنطقة")}</span>}
                 </div>
               </div>
             )}
-            <div className="col-span-2"><Field label="ملاحظات"><textarea className={inputCls} rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field></div>
-            <div className="col-span-2 flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>إلغاء</Btn><Btn onClick={submit}>حفظ</Btn></div>
+            <div className="col-span-2"><Field label={tr("ملاحظات")}><textarea className={inputCls} rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field></div>
+            <div className="col-span-2 flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>{tr("إلغاء")}</Btn><Btn onClick={submit}>{tr("حفظ")}</Btn></div>
           </div>
         )}
       </Modal>
@@ -1326,14 +1580,14 @@ export default function App() {
     const at = new Date().toISOString();
     lastAtRef.current = new Date(at).getTime();
     setDb(next);
-    saveDB(next, at).then(({ error }) => { if (error) { console.error(error); alert("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة."); } });
+    saveDB(next, at).then(({ error }) => { if (error) { console.error(error); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.")); } });
   };
   const changeStaffPw = () => {
-    if (spw.nw.length < 6) return setSpwMsg("كلمة المرور يجب أن تكون 6 خانات على الأقل");
-    if (spw.nw !== spw.cf) return setSpwMsg("تأكيد كلمة المرور لا يطابق");
+    if (spw.nw.length < 6) return setSpwMsg(tr("كلمة المرور يجب أن تكون 6 خانات على الأقل"));
+    if (spw.nw !== spw.cf) return setSpwMsg(tr("تأكيد كلمة المرور لا يطابق"));
     supabase.auth.updateUser({ password: spw.nw }).then(({ error }) => {
-      if (error) return setSpwMsg("تعذّر التغيير: " + (error.message || ""));
-      setSpw({ nw: "", cf: "" }); setSpwMsg("✅ تم تغيير كلمة المرور بنجاح");
+      if (error) return setSpwMsg(tr("تعذّر التغيير: ") + (error.message || ""));
+      setSpw({ nw: "", cf: "" }); setSpwMsg(tr("✅ تم تغيير كلمة المرور بنجاح"));
     });
   };
 
@@ -1350,9 +1604,9 @@ export default function App() {
     );
   }
 
-  if (session === undefined) return <div className="min-h-screen flex items-center justify-center text-slate-400">جارٍ التحميل…</div>;
+  if (session === undefined) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
   if (!session) return <Login onToggleLang={toggleLang} onRider={(view, creds) => { try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {} setRider({ view: normalizeDB(view), creds }); }} />;
-  if (!staff || !db) return <div className="min-h-screen flex items-center justify-center text-slate-400">جارٍ التحميل…</div>;
+  if (!staff || !db) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
 
   const user = staff;
   const nav = sidebarFor(user);
@@ -1398,14 +1652,14 @@ export default function App() {
         <Topbar user={user} onLogout={logout} onMenu={() => setSidebar(true)} title={activeItem ? activeItem.label : ""} onSettings={() => { setSpwMsg(""); setShowSettings(true); }} onToggleLang={toggleLang} />
         <main className="p-4 md:p-6 flex-1">{Page()}</main>
       </div>
-      <Modal open={showSettings} onClose={() => setShowSettings(false)} title="إعدادات الحساب">
+      <Modal open={showSettings} onClose={() => setShowSettings(false)} title={tr("إعدادات الحساب")}>
         <div className="space-y-4">
-          <div className="text-sm text-slate-500">الحساب: <b dir="ltr">{user.email}</b> · {ROLES[user.role]}</div>
-          <h4 className="font-bold text-slate-800 flex items-center gap-2"><KeyRound size={16} /> تغيير كلمة المرور</h4>
-          <Field label="كلمة المرور الجديدة"><input type="password" className={inputCls} value={spw.nw} onChange={(e) => setSpw({ ...spw, nw: e.target.value })} /></Field>
-          <Field label="تأكيد كلمة المرور"><input type="password" className={inputCls} value={spw.cf} onChange={(e) => setSpw({ ...spw, cf: e.target.value })} /></Field>
+          <div className="text-sm text-slate-500">{tr("الحساب:")} <b dir="ltr">{user.email}</b> · {ROLES[user.role]}</div>
+          <h4 className="font-bold text-slate-800 flex items-center gap-2"><KeyRound size={16} /> {tr("تغيير كلمة المرور")}</h4>
+          <Field label={tr("كلمة المرور الجديدة")}><input type="password" className={inputCls} value={spw.nw} onChange={(e) => setSpw({ ...spw, nw: e.target.value })} /></Field>
+          <Field label={tr("تأكيد كلمة المرور")}><input type="password" className={inputCls} value={spw.cf} onChange={(e) => setSpw({ ...spw, cf: e.target.value })} /></Field>
           {spwMsg && <p className="text-xs" style={{ color: spwMsg.charAt(0) === "\u2705" ? "#0f9d58" : "#c0341d" }}>{spwMsg}</p>}
-          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setShowSettings(false)}>إغلاق</Btn><Btn onClick={changeStaffPw}>حفظ</Btn></div>
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setShowSettings(false)}>{tr("إغلاق")}</Btn><Btn onClick={changeStaffPw}>{tr("حفظ")}</Btn></div>
         </div>
       </Modal>
     </div>
@@ -1427,8 +1681,8 @@ function Topbar({ user, onLogout, onMenu, title, logo, onSettings, onToggleLang 
         </div>
         {onToggleLang && <button onClick={onToggleLang} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg px-2 py-1" title="Language"><Globe size={14} /> {t("EN", "ع")}</button>}
         <span className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><CircleUserRound size={22} /></span>
-        {onSettings && <button onClick={onSettings} className="text-slate-400 hover:text-slate-700" title="الإعدادات"><Settings size={20} /></button>}
-        <button onClick={onLogout} className="text-slate-400 hover:text-red-600" title="خروج"><LogOut size={20} /></button>
+        {onSettings && <button onClick={onSettings} className="text-slate-400 hover:text-slate-700" title={tr("الإعدادات")}><Settings size={20} /></button>}
+        <button onClick={onLogout} className="text-slate-400 hover:text-red-600" title={tr("خروج")}><LogOut size={20} /></button>
       </div>
     </header>
   );
