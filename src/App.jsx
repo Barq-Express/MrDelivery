@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Truck, Wallet, FileBarChart, LogOut, Plus, Pencil,
   Search, Upload, CheckCircle2, XCircle, AlertTriangle, Banknote, Download,
   Printer, Eye, Menu, X, CircleUserRound, ShieldCheck, RefreshCw, Bike,
-  CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin, Settings
+  CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin, Settings, Globe
 } from "lucide-react";
 
 /* ============================================================
@@ -21,9 +21,9 @@ const NO_WORK_DAYS = 7;
 
 const COMPANIES = ["Talabat", "Snoonu", "Aramex"];
 const CMETA = {
-  Talabat: { ar: "الطلبات", color: "#FF5A00" },
-  Snoonu: { ar: "سنونو", color: "#7B1FA2" },
-  Aramex: { ar: "أرامكس", color: "#0E4AFF" },
+  Talabat: { ar: "الطلبات", en: "Talabat", color: "#FF5A00" },
+  Snoonu: { ar: "سنونو", en: "Snoonu", color: "#7B1FA2" },
+  Aramex: { ar: "أرامكس", en: "Aramex", color: "#0E4AFF" },
 };
 
 const ROLES = {
@@ -33,6 +33,14 @@ const ROLES = {
   Supervisor: "مشرف شركة",
   Rider: "مندوب",
 };
+const ROLES_EN = { Admin: "Admin", "Operations Manager": "Operations Manager", Finance: "Finance", Supervisor: "Supervisor", Rider: "Rider" };
+let LANG = "ar";
+try { LANG = localStorage.getItem("mrd_lang") || "ar"; } catch (e) {}
+const setLangGlobal = (l) => { LANG = l; try { localStorage.setItem("mrd_lang", l); } catch (e) {} };
+const t = (ar, en) => (LANG === "en" ? en : ar);
+const dirOf = () => (LANG === "en" ? "ltr" : "rtl");
+const cLabel = (c) => (LANG === "en" ? (CMETA[c] ? CMETA[c].en : c) : (CMETA[c] ? CMETA[c].ar : c));
+const roleLabel = (r) => (LANG === "en" ? (ROLES_EN[r] || r) : (ROLES[r] || r));
 
 const STAFF_USERS = [
   { username: "admin", password: "admin123", role: "Admin", name: "مدير النظام", company: null },
@@ -177,8 +185,8 @@ const inputCls = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm ou
 const Pill = ({ children, color }) => (
   <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: color + "22", color }}>{children}</span>
 );
-const companyPill = (c) => <Pill color={CMETA[c]?.color || "#64748b"}>{CMETA[c]?.ar || c}</Pill>;
-const statusPill = (s) => s === "Active" ? <Pill color="#0f9d58">نشط</Pill> : <Pill color="#94a3b8">غير نشط</Pill>;
+const companyPill = (c) => <Pill color={CMETA[c]?.color || "#64748b"}>{cLabel(c)}</Pill>;
+const statusPill = (s) => s === "Active" ? <Pill color="#0f9d58">{t("نشط", "Active")}</Pill> : <Pill color="#94a3b8">{t("غير نشط", "Inactive")}</Pill>;
 
 const Modal = ({ open, onClose, title, children, wide }) => {
   if (!open) return null;
@@ -303,7 +311,7 @@ function ExcelImporter({ company, riders, onApply }) {
 /* ============================================================
    Login
    ============================================================ */
-function Login({ onRider }) {
+function Login({ onRider, onToggleLang }) {
   const [tab, setTab] = useState("staff");
   const [email, setEmail] = useState(""); const [pw, setPw] = useState("");
   const [phone, setPhone] = useState(""); const [rpw, setRpw] = useState("");
@@ -312,43 +320,44 @@ function Login({ onRider }) {
     setErr(""); setBusy(true);
     supabase.auth.signInWithPassword({ email: email.trim(), password: pw }).then(({ error }) => {
       setBusy(false);
-      if (error) return setErr("بيانات الدخول غير صحيحة");
+      if (error) return setErr(t("بيانات الدخول غير صحيحة", "Invalid login credentials"));
     });
   };
   const riderLogin = () => {
     setErr(""); setBusy(true);
     supabase.rpc("rider_login", { p_phone: phone.trim(), p_password: rpw }).then(({ data, error }) => {
       setBusy(false);
-      if (error || !data) return setErr("رقم الهاتف أو كلمة المرور غير صحيحة");
+      if (error || !data) return setErr(t("رقم الهاتف أو كلمة المرور غير صحيحة", "Invalid phone or password"));
       onRider(data, { phone: phone.trim(), password: rpw });
     });
   };
   return (
-    <div dir="rtl" className="min-h-screen flex items-center justify-center p-4" style={{ background: BRAND.navy }}>
+    <div dir={dirOf()} className="min-h-screen flex items-center justify-center p-4" style={{ background: BRAND.navy }}>
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
           <img src={LOGO_FULL} alt="Mr. Delivery" className="h-24 mx-auto mb-3" />
-          <p className="text-sm text-slate-400 mt-1">نظام إدارة المناديب والطلبات و COD</p>
+          <p className="text-sm text-slate-400 mt-1">{t("نظام إدارة المناديب والطلبات و COD", "Riders, Orders & COD Management")}</p>
+          <button onClick={onToggleLang} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-slate-300 border border-white/20 rounded-lg px-3 py-1"><Globe size={13} /> {t("English", "العربية")}</button>
         </div>
         <Card className="p-6">
           <div className="flex gap-1 mb-5 border-b border-slate-200">
-            {[["staff", "دخول الموظفين"], ["rider", "دخول المناديب"]].map(([k, l]) => (
+            {[["staff", t("دخول الموظفين", "Staff Login")], ["rider", t("دخول المناديب", "Rider Login")]].map(([k, l]) => (
               <button key={k} onClick={() => { setTab(k); setErr(""); }} className="px-4 py-2 text-sm font-semibold border-b-2" style={tab === k ? { color: BRAND.orange, borderColor: BRAND.orange } : { color: "#64748b", borderColor: "transparent" }}>{l}</button>
             ))}
           </div>
           {tab === "staff" ? (
             <div className="space-y-4">
-              <Field label="البريد الإلكتروني"><input className={inputCls} dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@mrd.app" /></Field>
-              <Field label="كلمة المرور"><input type="password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && staffLogin()} placeholder="••••••" /></Field>
+              <Field label={t("البريد الإلكتروني", "Email")}><input className={inputCls} dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@mrd.app" /></Field>
+              <Field label={t("كلمة المرور", "Password")}><input type="password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && staffLogin()} placeholder="••••••" /></Field>
               {err && <p className="text-xs text-red-600">{err}</p>}
-              <Btn onClick={staffLogin} className="w-full justify-center">{busy ? "..." : "تسجيل الدخول"}</Btn>
+              <Btn onClick={staffLogin} className="w-full justify-center">{busy ? "..." : t("تسجيل الدخول", "Sign In")}</Btn>
             </div>
           ) : (
             <div className="space-y-4">
-              <Field label="رقم الهاتف"><input className={inputCls} dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="94003001" /></Field>
-              <Field label="كلمة المرور"><input type="password" className={inputCls} value={rpw} onChange={(e) => setRpw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && riderLogin()} placeholder="••••••" /></Field>
+              <Field label={t("رقم الهاتف", "Phone")}><input className={inputCls} dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="94003001" /></Field>
+              <Field label={t("كلمة المرور", "Password")}><input type="password" className={inputCls} value={rpw} onChange={(e) => setRpw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && riderLogin()} placeholder="••••••" /></Field>
               {err && <p className="text-xs text-red-600">{err}</p>}
-              <Btn onClick={riderLogin} className="w-full justify-center">{busy ? "..." : "دخول المندوب"}</Btn>
+              <Btn onClick={riderLogin} className="w-full justify-center">{busy ? "..." : t("دخول المندوب", "Rider Sign In")}</Btn>
             </div>
           )}
         </Card>
@@ -915,14 +924,14 @@ function ReportsScoped({ db, company }) {
 }
 
 const CTABS = [
-  { key: "overview", label: "نظرة عامة", icon: LayoutDashboard },
-  { key: "riders", label: "المناديب", icon: Users },
-  { key: "orders", label: "الطلبات", icon: Truck },
-  { key: "transfers", label: "COD والتحويلات", icon: Wallet },
-  { key: "recon", label: "المطابقة البنكية", icon: ShieldCheck },
-  { key: "attendance", label: "الحضور والنشاط", icon: CalendarCheck },
-  { key: "shifts", label: "الشفتات", icon: Clock },
-  { key: "reports", label: "التقارير", icon: FileBarChart },
+  { key: "overview", ar: "نظرة عامة", en: "Overview", icon: LayoutDashboard },
+  { key: "riders", ar: "المناديب", en: "Riders", icon: Users },
+  { key: "orders", ar: "الطلبات", en: "Orders", icon: Truck },
+  { key: "transfers", ar: "COD والتحويلات", en: "COD & Transfers", icon: Wallet },
+  { key: "recon", ar: "المطابقة البنكية", en: "Bank Reconciliation", icon: ShieldCheck },
+  { key: "attendance", ar: "الحضور والنشاط", en: "Attendance", icon: CalendarCheck },
+  { key: "shifts", ar: "الشفتات", en: "Shifts", icon: Clock },
+  { key: "reports", ar: "التقارير", en: "Reports", icon: FileBarChart },
 ];
 
 function CompanyWindow({ company, db, save }) {
@@ -931,16 +940,16 @@ function CompanyWindow({ company, db, save }) {
     <div className="space-y-4">
       <div className="flex items-center gap-2 pb-1">
         <span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: CMETA[company].color }}><Building2 size={18} color="#fff" /></span>
-        <h2 className="font-extrabold text-lg" style={{ color: CMETA[company].color }}>نافذة {CMETA[company].ar}</h2>
+        <h2 className="font-extrabold text-lg" style={{ color: CMETA[company].color }}>{t("نافذة", "Window")} {cLabel(company)}</h2>
       </div>
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200 pb-px">
-        {CTABS.map((t) => {
-          const Icon = t.icon; const active = tab === t.key;
+        {CTABS.map((tb) => {
+          const Icon = tb.icon; const active = tab === tb.key;
           return (
-            <button key={t.key} onClick={() => setTab(t.key)}
+            <button key={tb.key} onClick={() => setTab(tb.key)}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold whitespace-nowrap rounded-t-lg border-b-2 transition"
               style={active ? { color: CMETA[company].color, borderColor: CMETA[company].color } : { color: "#64748b", borderColor: "transparent" }}>
-              <Icon size={15} /> {t.label}
+              <Icon size={15} /> {t(tb.ar, tb.en)}
             </button>
           );
         })}
@@ -1239,14 +1248,14 @@ function Employees({ db, save }) {
 }
 
 function sidebarFor(user) {
-  if (user.role === "Supervisor") return [{ key: "company:" + user.company, label: CMETA[user.company].ar, kind: "company", company: user.company }];
-  const items = [{ key: "dashboard", label: "اللوحة العامة", kind: "dashboard" }];
-  COMPANIES.forEach((c) => items.push({ key: "company:" + c, label: CMETA[c].ar, kind: "company", company: c }));
+  if (user.role === "Supervisor") return [{ key: "company:" + user.company, label: cLabel(user.company), kind: "company", company: user.company }];
+  const items = [{ key: "dashboard", label: t("اللوحة العامة", "Dashboard"), kind: "dashboard" }];
+  COMPANIES.forEach((c) => items.push({ key: "company:" + c, label: cLabel(c), kind: "company", company: c }));
   if (user.role === "Admin" || user.role === "Operations Manager") {
-    items.push({ key: "shifts", label: "الشفتات (كل الشركات)", kind: "shifts" });
-    items.push({ key: "employees", label: "الموظفون", kind: "employees" });
-    items.push({ key: "allriders", label: "كل المناديب", kind: "allriders" });
-    items.push({ key: "reports", label: "تقارير عامة", kind: "reports" });
+    items.push({ key: "shifts", label: t("الشفتات (كل الشركات)", "Shifts (All)"), kind: "shifts" });
+    items.push({ key: "employees", label: t("الموظفون", "Employees"), kind: "employees" });
+    items.push({ key: "allriders", label: t("كل المناديب", "All Riders"), kind: "allriders" });
+    items.push({ key: "reports", label: t("تقارير عامة", "Reports"), kind: "reports" });
   }
   return items;
 }
@@ -1263,6 +1272,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [spw, setSpw] = useState({ nw: "", cf: "" });
   const [spwMsg, setSpwMsg] = useState("");
+  const [lang, setLangState] = useState(LANG);
+  const toggleLang = () => { const n = LANG === "ar" ? "en" : "ar"; setLangGlobal(n); setLangState(n); };
 
   useEffect(() => {
     let creds = null;
@@ -1332,15 +1343,15 @@ export default function App() {
     const rd = rider.view.riders[0];
     if (!rd) { logoutRider(); return null; }
     return (
-      <div dir="rtl" className="min-h-screen bg-slate-100">
-        <Topbar user={{ name: rd.name, role: "Rider" }} onLogout={logoutRider} onMenu={null} title="بوابة المندوب" logo />
+      <div dir={dirOf()} className="min-h-screen bg-slate-100" data-lang={lang}>
+        <Topbar user={{ name: rd.name, role: "Rider" }} onLogout={logoutRider} onMenu={null} title={t("بوابة المندوب", "Rider Portal")} logo onToggleLang={toggleLang} />
         <div className="p-4 md:p-6"><RiderPortal db={rider.view} riderId={rd.id} creds={rider.creds} refresh={refresh} /></div>
       </div>
     );
   }
 
   if (session === undefined) return <div className="min-h-screen flex items-center justify-center text-slate-400">جارٍ التحميل…</div>;
-  if (!session) return <Login onRider={(view, creds) => { try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {} setRider({ view: normalizeDB(view), creds }); }} />;
+  if (!session) return <Login onToggleLang={toggleLang} onRider={(view, creds) => { try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {} setRider({ view: normalizeDB(view), creds }); }} />;
   if (!staff || !db) return <div className="min-h-screen flex items-center justify-center text-slate-400">جارٍ التحميل…</div>;
 
   const user = staff;
@@ -1362,8 +1373,8 @@ export default function App() {
   };
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-100 flex">
-      <aside className={`fixed lg:static z-40 inset-y-0 right-0 w-64 flex-shrink-0 transition-transform ${sidebar ? "translate-x-0" : "translate-x-full lg:translate-x-0"}`} style={{ background: BRAND.navy }}>
+    <div dir={dirOf()} className="min-h-screen bg-slate-100 flex" data-lang={lang}>
+      <aside className={`fixed lg:static z-40 inset-y-0 ${LANG === "en" ? "left-0" : "right-0"} w-64 flex-shrink-0 transition-transform ${sidebar ? "translate-x-0" : (LANG === "en" ? "-translate-x-full" : "translate-x-full") + " lg:translate-x-0"}`} style={{ background: BRAND.navy }}>
         <div className="h-16 flex items-center gap-2 px-5 border-b border-white/10">
           <img src={LOGO_MARK} alt="" className="h-8" />
           <span className="font-extrabold text-white">Mr.Delivery</span>
@@ -1384,7 +1395,7 @@ export default function App() {
       </aside>
       {sidebar && <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setSidebar(false)} />}
       <div className="flex-1 min-w-0 flex flex-col">
-        <Topbar user={user} onLogout={logout} onMenu={() => setSidebar(true)} title={activeItem ? activeItem.label : ""} onSettings={() => { setSpwMsg(""); setShowSettings(true); }} />
+        <Topbar user={user} onLogout={logout} onMenu={() => setSidebar(true)} title={activeItem ? activeItem.label : ""} onSettings={() => { setSpwMsg(""); setShowSettings(true); }} onToggleLang={toggleLang} />
         <main className="p-4 md:p-6 flex-1">{Page()}</main>
       </div>
       <Modal open={showSettings} onClose={() => setShowSettings(false)} title="إعدادات الحساب">
@@ -1401,7 +1412,7 @@ export default function App() {
   );
 }
 
-function Topbar({ user, onLogout, onMenu, title, logo, onSettings }) {
+function Topbar({ user, onLogout, onMenu, title, logo, onSettings, onToggleLang }) {
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
       <div className="flex items-center gap-3">
@@ -1412,8 +1423,9 @@ function Topbar({ user, onLogout, onMenu, title, logo, onSettings }) {
       <div className="flex items-center gap-3">
         <div className="text-left hidden sm:block">
           <div className="text-sm font-semibold text-slate-800">{user.name}</div>
-          <div className="text-[11px] text-slate-400">{ROLES[user.role]}{user.company ? " · " + CMETA[user.company].ar : ""}</div>
+          <div className="text-[11px] text-slate-400">{roleLabel(user.role)}{user.company ? " · " + cLabel(user.company) : ""}</div>
         </div>
+        {onToggleLang && <button onClick={onToggleLang} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg px-2 py-1" title="Language"><Globe size={14} /> {t("EN", "ع")}</button>}
         <span className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><CircleUserRound size={22} /></span>
         {onSettings && <button onClick={onSettings} className="text-slate-400 hover:text-slate-700" title="الإعدادات"><Settings size={20} /></button>}
         <button onClick={onLogout} className="text-slate-400 hover:text-red-600" title="خروج"><LogOut size={20} /></button>
