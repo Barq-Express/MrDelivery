@@ -1272,7 +1272,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         <StatCard icon={<CheckCircle2 size={16} />} label={tr("المحوّل")} value={omr(m.transferred)} accent={BRAND.navy} />
       </div>
       <Card className="p-5">
-        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} / {tr("تحويل COD")}</h3>
+        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} /> {tr("تحويل COD")}</h3>
         <div className="grid grid-cols-2 gap-4">
           <Field label={tr("قيمة المبلغ المحوّل (OMR)")}><input className={inputCls} type="number" step="0.001" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
           <Field label={tr("الرقم المرجعي")}><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
