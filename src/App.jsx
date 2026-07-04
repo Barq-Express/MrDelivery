@@ -461,7 +461,7 @@ function StatCard({ icon, label, value, accent = BRAND.navy, sub }) {
   );
 }
 function exportExcel(rows, name) {
-  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ tr("لا بيانات"): "" }]);
+  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ [tr("لا بيانات")]: "" }]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Report");
   XLSX.writeFile(wb, `${name}.xlsx`);
