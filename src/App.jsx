@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Truck, Wallet, FileBarChart, LogOut, Plus, Pencil,
   Search, Upload, CheckCircle2, XCircle, AlertTriangle, Banknote, Download,
   Printer, Eye, Menu, X, CircleUserRound, ShieldCheck, RefreshCw, Bike,
-  CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin
+  CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin, Settings
 } from "lucide-react";
 
 /* ============================================================
@@ -126,8 +126,8 @@ const loadDB = () =>
   supabase.from("app_state").select("data").eq("id", APP_ROW_ID).single()
     .then(({ data }) => normalizeDB(data ? data.data : null))
     .catch(() => normalizeDB(null));
-const saveDB = (next) =>
-  supabase.from("app_state").update({ data: next, updated_at: new Date().toISOString() }).eq("id", APP_ROW_ID);
+const saveDB = (next, at) =>
+  supabase.from("app_state").update({ data: next, updated_at: at || new Date().toISOString() }).eq("id", APP_ROW_ID);
 
 function resizeImage(file, max = 900) {
   return new Promise((res) => {
@@ -1259,6 +1259,10 @@ export default function App() {
   const [rider, setRider] = useState(null);
   const [route, setRoute] = useState("dashboard");
   const [sidebar, setSidebar] = useState(false);
+  const lastAtRef = useRef(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [spw, setSpw] = useState({ nw: "", cf: "" });
+  const [spwMsg, setSpwMsg] = useState("");
 
   useEffect(() => {
     let creds = null;
@@ -1281,10 +1285,18 @@ export default function App() {
     const prof = STAFF_BY_EMAIL[session.user.email] || { role: "Operations Manager", name: session.user.email, company: null };
     setStaff({ ...prof, email: session.user.email });
     setRoute(prof.role === "Supervisor" ? "company:" + prof.company : "dashboard");
-    loadDB().then(setDb);
+    supabase.from("app_state").select("data, updated_at").eq("id", APP_ROW_ID).single().then(({ data }) => {
+      if (data) { lastAtRef.current = data.updated_at ? new Date(data.updated_at).getTime() : Date.now(); setDb(normalizeDB(data.data)); }
+      else setDb(normalizeDB(null));
+    });
     const ch = supabase.channel("app_state_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "app_state" }, (payload) => {
-        if (payload.new && payload.new.data) setDb(normalizeDB(payload.new.data));
+        if (payload.new && payload.new.data) {
+          const t = payload.new.updated_at ? new Date(payload.new.updated_at).getTime() : Date.now();
+          if (t < lastAtRef.current) return;
+          lastAtRef.current = t;
+          setDb(normalizeDB(payload.new.data));
+        }
       }).subscribe();
     return () => { try { supabase.removeChannel(ch); } catch (e) {} };
   }, [session]);
@@ -1299,7 +1311,20 @@ export default function App() {
     return () => clearInterval(id);
   }, [rider ? rider.creds.phone : null]);
 
-  const save = (next) => { setDb(next); saveDB(next); };
+  const save = (next) => {
+    const at = new Date().toISOString();
+    lastAtRef.current = new Date(at).getTime();
+    setDb(next);
+    saveDB(next, at).then(({ error }) => { if (error) { console.error(error); alert("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة."); } });
+  };
+  const changeStaffPw = () => {
+    if (spw.nw.length < 6) return setSpwMsg("كلمة المرور يجب أن تكون 6 خانات على الأقل");
+    if (spw.nw !== spw.cf) return setSpwMsg("تأكيد كلمة المرور لا يطابق");
+    supabase.auth.updateUser({ password: spw.nw }).then(({ error }) => {
+      if (error) return setSpwMsg("تعذّر التغيير: " + (error.message || ""));
+      setSpw({ nw: "", cf: "" }); setSpwMsg("✅ تم تغيير كلمة المرور بنجاح");
+    });
+  };
 
   if (rider) {
     const refresh = () => supabase.rpc("rider_login", { p_phone: rider.creds.phone, p_password: rider.creds.password }).then(({ data }) => { if (data) setRider({ view: normalizeDB(data), creds: rider.creds }); });
@@ -1359,14 +1384,24 @@ export default function App() {
       </aside>
       {sidebar && <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setSidebar(false)} />}
       <div className="flex-1 min-w-0 flex flex-col">
-        <Topbar user={user} onLogout={logout} onMenu={() => setSidebar(true)} title={activeItem ? activeItem.label : ""} />
+        <Topbar user={user} onLogout={logout} onMenu={() => setSidebar(true)} title={activeItem ? activeItem.label : ""} onSettings={() => { setSpwMsg(""); setShowSettings(true); }} />
         <main className="p-4 md:p-6 flex-1">{Page()}</main>
       </div>
+      <Modal open={showSettings} onClose={() => setShowSettings(false)} title="إعدادات الحساب">
+        <div className="space-y-4">
+          <div className="text-sm text-slate-500">الحساب: <b dir="ltr">{user.email}</b> · {ROLES[user.role]}</div>
+          <h4 className="font-bold text-slate-800 flex items-center gap-2"><KeyRound size={16} /> تغيير كلمة المرور</h4>
+          <Field label="كلمة المرور الجديدة"><input type="password" className={inputCls} value={spw.nw} onChange={(e) => setSpw({ ...spw, nw: e.target.value })} /></Field>
+          <Field label="تأكيد كلمة المرور"><input type="password" className={inputCls} value={spw.cf} onChange={(e) => setSpw({ ...spw, cf: e.target.value })} /></Field>
+          {spwMsg && <p className="text-xs" style={{ color: spwMsg.charAt(0) === "\u2705" ? "#0f9d58" : "#c0341d" }}>{spwMsg}</p>}
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setShowSettings(false)}>إغلاق</Btn><Btn onClick={changeStaffPw}>حفظ</Btn></div>
+        </div>
+      </Modal>
     </div>
   );
 }
 
-function Topbar({ user, onLogout, onMenu, title, logo }) {
+function Topbar({ user, onLogout, onMenu, title, logo, onSettings }) {
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
       <div className="flex items-center gap-3">
@@ -1380,6 +1415,7 @@ function Topbar({ user, onLogout, onMenu, title, logo }) {
           <div className="text-[11px] text-slate-400">{ROLES[user.role]}{user.company ? " · " + CMETA[user.company].ar : ""}</div>
         </div>
         <span className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><CircleUserRound size={22} /></span>
+        {onSettings && <button onClick={onSettings} className="text-slate-400 hover:text-slate-700" title="الإعدادات"><Settings size={20} /></button>}
         <button onClick={onLogout} className="text-slate-400 hover:text-red-600" title="خروج"><LogOut size={20} /></button>
       </div>
     </header>
