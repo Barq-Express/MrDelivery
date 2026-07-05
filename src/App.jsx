@@ -655,17 +655,17 @@ function GlobalDashboard({ db, onOpen }) {
       <div className="grid md:grid-cols-3 gap-3">
         {perC.map(({ c, s }) => (
           <Card key={c} className="p-5 cursor-pointer hover:shadow-md transition" style={{ borderTop: `3px solid ${CMETA[c].color}` }}>
-            <button onClick={() => onOpen(c)} className="w-full text-right">
+            <button onClick={() => onOpen(c)} className="w-full text-start">
               <div className="flex items-center justify-between mb-3">
                 <span className="font-extrabold text-lg" style={{ color: CMETA[c].color }}>{cLabel(c)}</span>
                 <Building2 size={20} style={{ color: CMETA[c].color }} />
               </div>
-              <div className="grid grid-cols-2 gap-y-2 text-sm">
-                <div className="text-slate-500">{tr("المناديب")}</div><div className="font-bold text-left">{s.total}</div>
-                <div className="text-slate-500">{tr("الطلبات")}</div><div className="font-bold text-left">{s.orders}</div>
-                <div className="text-slate-500">COD</div><div className="font-bold text-left">{omr(s.cod)}</div>
-                <div className="text-slate-500">{tr("المتبقي")}</div><div className="font-bold text-left" style={{ color: "#c0341d" }}>{omr(s.remaining)}</div>
-                <div className="text-slate-500">{tr("غير نشطين")}</div><div className="font-bold text-left">{s.inactive.length > 0 ? <span style={{ color: "#c0341d" }}>{s.inactive.length} 🔴</span> : "0"}</div>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between"><span className="text-slate-500">{tr("المناديب")}</span><span className="font-bold">{s.total}</span></div>
+                <div className="flex items-center justify-between"><span className="text-slate-500">{tr("الطلبات")}</span><span className="font-bold">{s.orders}</span></div>
+                <div className="flex items-center justify-between"><span className="text-slate-500">COD</span><span className="font-bold">{omr(s.cod)}</span></div>
+                <div className="flex items-center justify-between"><span className="text-slate-500">{tr("المتبقي")}</span><span className="font-bold" style={{ color: "#c0341d" }}>{omr(s.remaining)}</span></div>
+                <div className="flex items-center justify-between"><span className="text-slate-500">{tr("غير نشطين")}</span><span className="font-bold">{s.inactive.length > 0 ? <span style={{ color: "#c0341d" }}>{s.inactive.length} 🔴</span> : "0"}</span></div>
               </div>
               <div className="mt-3 text-xs font-semibold" style={{ color: CMETA[c].color }}>{tr("فتح النافذة ←")}</div>
             </button>
