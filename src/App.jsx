@@ -39,7 +39,7 @@ try { LANG = localStorage.getItem("mrd_lang") || "ar"; } catch (e) {}
 const setLangGlobal = (l) => { LANG = l; try { localStorage.setItem("mrd_lang", l); } catch (e) {} };
 const t = (ar, en) => (LANG === "en" ? en : ar);
 const dirOf = () => (LANG === "en" ? "ltr" : "rtl");
-const cLabel = (c) => (LANG === "en" ? (CMETA[c] ? CMETA[c].en : c) : (CMETA[c] ? cLabel(c) : c));
+const cLabel = (c) => (LANG === "en" ? (CMETA[c] ? CMETA[c].en : c) : (CMETA[c] ? CMETA[c].ar : c));
 const roleLabel = (r) => (LANG === "en" ? (ROLES_EN[r] || r) : (ROLES[r] || r));
 const TR = {
   "المندوب": "Rider",
