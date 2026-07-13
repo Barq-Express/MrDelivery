@@ -370,6 +370,7 @@ function normalizeDB(db) {
     bankRows: { Talabat: b.Talabat || [], Snoonu: b.Snoonu || [], Aramex: b.Aramex || [] },
     attendance: db.attendance || {},
     employees: db.employees || [],
+    staff: db.staff || {},
   };
 }
 
@@ -1428,6 +1429,26 @@ function Employees({ db, save }) {
   const candidates = editing ? db.riders.filter((r) => r.company === editing.company && (!editing.area || (r.area || "") === editing.area)) : [];
   const toggleRider = (id) => setEditing((e) => ({ ...e, riderIds: e.riderIds.includes(id) ? e.riderIds.filter((x) => x !== id) : [...e.riderIds, id] }));
 
+  const blankAcc = { email: "", password: "", name: "", role: "Supervisor", company: "Talabat" };
+  const [showAcc, setShowAcc] = useState(false);
+  const [acc, setAcc] = useState(blankAcc);
+  const [accMsg, setAccMsg] = useState("");
+  const [accBusy, setAccBusy] = useState(false);
+  const accounts = Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).map(([email, p]) => ({ email, ...p }));
+  const createAccount = () => {
+    const email = (acc.email || "").trim().toLowerCase();
+    if (!email || !acc.password || acc.password.length < 6) return setAccMsg(t("البريد وكلمة مرور 6 خانات على الأقل مطلوبة", "Email and a 6+ char password are required"));
+    setAccBusy(true); setAccMsg("");
+    supabase.functions.invoke("create-staff", { body: { email, password: acc.password } }).then(({ data, error }) => {
+      setAccBusy(false);
+      if (error || (data && data.error)) return setAccMsg((data && data.error) ? String(data.error) : t("تعذّر إنشاء الحساب — تأكد من نشر الدالة", "Failed to create account — check the function is deployed"));
+      const company = acc.role === "Supervisor" ? (acc.company || "Talabat") : null;
+      save({ ...db, staff: { ...(db.staff || {}), [email]: { role: acc.role, name: acc.name || email, company } } });
+      setAccMsg(t("✅ تم إنشاء الحساب بنجاح", "✅ Account created successfully"));
+      setAcc(blankAcc);
+    });
+  };
+
   return (
     <div className="space-y-4">
       <datalist id="mrd-emp-areas">{allAreas.map((a) => <option key={a} value={a} />)}</datalist>
@@ -1468,6 +1489,45 @@ function Employees({ db, save }) {
           </tbody>
         </table>
       </div></Card>
+
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="font-bold text-slate-800 flex items-center gap-2"><KeyRound size={16} /> {t("حسابات الدخول", "Login Accounts")}</h3>
+          <Btn onClick={() => { setAcc(blankAcc); setAccMsg(""); setShowAcc(true); }}><Plus size={16} /> {t("إضافة حساب دخول", "Add Login Account")}</Btn>
+        </div>
+        <p className="text-xs text-slate-400 mb-3">{t("الموظف يدخل بالبريد وكلمة المرور، ويقدر يغيّر كلمة المرور من الإعدادات ⚙️", "The employee signs in with email + password, and can change it from Settings ⚙️")}</p>
+        <div className="space-y-1 text-sm">
+          {accounts.map((a) => (
+            <div key={a.email} className="flex items-center justify-between border-b border-slate-50 py-1.5 flex-wrap gap-2">
+              <span dir="ltr" className="font-mono text-xs text-slate-700">{a.email}</span>
+              <span className="flex items-center gap-2"><Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Modal open={showAcc} onClose={() => setShowAcc(false)} title={t("إضافة حساب دخول", "Add Login Account")}>
+        <div className="space-y-4">
+          <Field label={t("البريد / اسم المستخدم", "Email / Username")}><input dir="ltr" className={inputCls} value={acc.email} onChange={(e) => setAcc({ ...acc, email: e.target.value })} placeholder="name@mrd.com" /></Field>
+          <Field label={t("كلمة المرور المؤقتة", "Temporary Password")}><input className={inputCls} value={acc.password} onChange={(e) => setAcc({ ...acc, password: e.target.value })} placeholder={t("6 خانات على الأقل", "min 6 characters")} /></Field>
+          <Field label={t("الاسم", "Name")}><input className={inputCls} value={acc.name} onChange={(e) => setAcc({ ...acc, name: e.target.value })} /></Field>
+          <Field label={t("الدور", "Role")}>
+            <select className={inputCls} value={acc.role} onChange={(e) => setAcc({ ...acc, role: e.target.value })}>
+              <option value="Admin">{roleLabel("Admin")}</option>
+              <option value="Operations Manager">{roleLabel("Operations Manager")}</option>
+              <option value="Finance">{roleLabel("Finance")}</option>
+              <option value="Supervisor">{roleLabel("Supervisor")}</option>
+            </select>
+          </Field>
+          {acc.role === "Supervisor" && (
+            <Field label={t("الشركة", "Company")}>
+              <select className={inputCls} value={acc.company || "Talabat"} onChange={(e) => setAcc({ ...acc, company: e.target.value })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>
+            </Field>
+          )}
+          {accMsg && <p className="text-xs" style={{ color: accMsg.charAt(0) === "✅" ? "#0f9d58" : "#c0341d" }}>{accMsg}</p>}
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setShowAcc(false)}>{tr("إغلاق")}</Btn><Btn onClick={createAccount}>{accBusy ? "..." : t("إنشاء الحساب", "Create Account")}</Btn></div>
+        </div>
+      </Modal>
 
       <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? tr("تعديل موظف") : tr("إضافة موظف")} wide>
         {editing && (
@@ -1547,12 +1607,18 @@ export default function App() {
 
   useEffect(() => {
     if (!session) { setStaff(null); setDb(null); return; }
-    const prof = STAFF_BY_EMAIL[session.user.email] || { role: "Operations Manager", name: session.user.email, company: null };
-    setStaff({ ...prof, email: session.user.email });
-    setRoute(prof.role === "Supervisor" ? "company:" + prof.company : "dashboard");
+    const email = session.user.email;
+    const resolveProf = (norm) => (norm && norm.staff && norm.staff[email]) || STAFF_BY_EMAIL[email] || { role: "Operations Manager", name: email, company: null };
+    const p0 = resolveProf(null);
+    setStaff({ ...p0, email });
+    setRoute(p0.role === "Supervisor" ? "company:" + p0.company : "dashboard");
     supabase.from("app_state").select("data, updated_at").eq("id", APP_ROW_ID).single().then(({ data }) => {
-      if (data) { lastAtRef.current = data.updated_at ? new Date(data.updated_at).getTime() : Date.now(); setDb(normalizeDB(data.data)); }
-      else setDb(normalizeDB(null));
+      const norm = normalizeDB(data ? data.data : null);
+      if (data) lastAtRef.current = data.updated_at ? new Date(data.updated_at).getTime() : Date.now();
+      setDb(norm);
+      const prof = resolveProf(norm);
+      setStaff({ ...prof, email });
+      if (prof.role === "Supervisor") setRoute("company:" + prof.company);
     });
     const ch = supabase.channel("app_state_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "app_state" }, (payload) => {
