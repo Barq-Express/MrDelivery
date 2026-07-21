@@ -377,6 +377,7 @@ function normalizeDB(db) {
 /* ---------- storage (promise-based) ---------- */
 const mem = {};
 const APP_ROW_ID = 1;
+const STAFF_FN_SECRET = "mrd_Iq-jEkXJRJ9Rs2R1BMxck2wvt7qC7TaD";
 const loadDB = () =>
   supabase.from("app_state").select("data").eq("id", APP_ROW_ID).single()
     .then(({ data }) => normalizeDB(data ? data.data : null))
@@ -1439,7 +1440,7 @@ function Employees({ db, save }) {
     const email = (acc.email || "").trim().toLowerCase();
     if (!email || !acc.password || acc.password.length < 6) return setAccMsg(t("البريد وكلمة مرور 6 خانات على الأقل مطلوبة", "Email and a 6+ char password are required"));
     setAccBusy(true); setAccMsg("");
-    supabase.functions.invoke("create-staff", { body: { email, password: acc.password } }).then(({ data, error }) => {
+    supabase.functions.invoke("create-staff", { body: { email, password: acc.password, secret: STAFF_FN_SECRET } }).then(({ data, error }) => {
       setAccBusy(false);
       if (error || (data && data.error)) return setAccMsg((data && data.error) ? String(data.error) : t("تعذّر إنشاء الحساب — تأكد من نشر الدالة", "Failed to create account — check the function is deployed"));
       const company = acc.role === "Supervisor" ? (acc.company || "Talabat") : null;
