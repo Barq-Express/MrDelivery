@@ -20,6 +20,35 @@ const LOGO_MARK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAABFCAYAAAC
 const NO_WORK_DAYS = 7;
 
 const COMPANIES = ["Talabat", "Snoonu", "Aramex"];
+const BANKS = [
+  { name: "Ahlibank SAOG", swift: "AUBOOMRU" },
+  { name: "AL Hilal Islamic Window", swift: "AUBOOMRUALH" },
+  { name: "AL Izz Islamic Bank", swift: "IZZBOMRU" },
+  { name: "Bank Dhofar S.A.O.G.", swift: "BDOFOMRU" },
+  { name: "Bank Muscat", swift: "BMUSOMRX" },
+  { name: "Bank Muscat Islamic Meethaq", swift: "BMUSOMRXISL" },
+  { name: "Bank Meli Iran", swift: "MELIOMRX" },
+  { name: "Bank Nizwa", swift: "BNZWOMRX" },
+  { name: "Bank of Barooda, Greater Muttrah Branch", swift: "BARBOMMX" },
+  { name: "Bank of Beirut", swift: "BABEOMRX" },
+  { name: "Bank Saderat Iran", swift: "BSIROMRX" },
+  { name: "Bank Sohar", swift: "BSHROMRU" },
+  { name: "Bank Sohar Islamic Window", swift: "BSHROMRUISL" },
+  { name: "Habib Bank", swift: "HABBOMRX" },
+  { name: "HSBC Middle East", swift: "BBMEOMRX" },
+  { name: "Maisarah Islamic Banking", swift: "BDOFOMRUMIB" },
+  { name: "National Bank of Abu Dhabi", swift: "NBADOMRX" },
+  { name: "National Bank of Oman", swift: "NBOMOMRX" },
+  { name: "Muzn Islamic Banking", swift: "NBOMOMRXIBS" },
+  { name: "Oman Arab Bank", swift: "OMABOMRU" },
+  { name: "AL Yusr Islamic Banking", swift: "OMABOMRUYSR" },
+  { name: "Oman Development Bank", swift: "ODBLOMRU" },
+  { name: "Oman Housing Bank", swift: "OHBLOMRX" },
+  { name: "OMAN INTERNATIONAL BANK", swift: "OIBAOMMX" },
+  { name: "State Bank of India", swift: "SBINOMRX" },
+  { name: "Standard Chartered Bank", swift: "SCBLOMRX" },
+  { name: "Qatar National Bank", swift: "QNBAOMRX" },
+];
 const CMETA = {
   Talabat: { ar: "الطلبات", en: "Talabat", color: "#FF5A00" },
   Snoonu: { ar: "سنونو", en: "Snoonu", color: "#7B1FA2" },
@@ -246,7 +275,7 @@ const TR = {
   "صف": "rows",
   "صالح": "Valid",
   "تخطّي": "Skip",
-  "الاسم، الهاتف، النوع، المنطقة، رقم المدني، رقم الحساب": "Name, Phone, Type, Area, Civil ID, Bank Account",
+  "الاسم، الهاتف، ID الشركة، النوع، المنطقة، الكوميشن، المدني، الحساب": "Name, Phone, Type, Area, Civil ID, Bank Account",
   "الاسم ورقم الهاتف مطلوبان": "Name and phone are required",
   "اسم الموظف مطلوب": "Employee name is required",
   "المبلغ والرقم المرجعي مطلوبان": "Amount and reference are required",
@@ -478,7 +507,16 @@ function riderMoney(db, riderId) {
   const orders = rows.reduce((a, r) => a + (r.orders || 0), 0);
   const codToTransfer = rows.reduce((a, r) => a + (r.transferDue || 0), 0);
   const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved").reduce((a, t) => a + t.amount, 0);
-  const earn = rider ? computeEarn(rider.company, rider.type, orders) : 0;
+  let earn = 0;
+  if (rider) {
+    if (rider.type === "Freelancer") {
+      const defRate = { Snoonu: 1.4, Aramex: 0.7, Talabat: 0 };
+      const rate = Number(rider.commission) > 0 ? Number(rider.commission) : (defRate[rider.company] || 0);
+      earn = orders * rate;
+    } else {
+      earn = computeEarn(rider.company, rider.type, orders);
+    }
+  }
   return { orders, codToTransfer, transferred, owed: codToTransfer - transferred, earn };
 }
 
@@ -488,7 +526,7 @@ function riderMoney(db, riderId) {
 function ExcelImporter({ company, riders, onApply }) {
   const [headers, setHeaders] = useState(null);
   const [rows, setRows] = useState([]);
-  const [map, setMap] = useState({ key: 0, orders: 1, cod: 2, due: 3 });
+  const [map, setMap] = useState({ id: 0, key: 1, orders: 3, cod: 4, due: 5 });
   const [fileName, setFileName] = useState("");
   const fileRef = useRef();
   const isTalabat = company === "Talabat";
@@ -505,7 +543,8 @@ function ExcelImporter({ company, riders, onApply }) {
       setHeaders(hs);
       setRows(data.slice(1).filter((r) => r.some((c) => c !== "")));
       setMap({
-        key: guess(hs, ["phone", tr("هاتف"), "rider", tr("مندوب"), "name", tr("اسم"), "id"]),
+        id: guess(hs, ["id", "ايدي", "الايدي", "معرف", "code"]),
+        key: guess(hs, ["phone", tr("هاتف"), "rider", tr("مندوب"), "name", tr("اسم")]),
         orders: guess(hs, ["order", tr("طلب"), "delivered", "trips", "count"]),
         cod: guess(hs, ["cod", "cash", tr("نقد"), "collected", tr("تحصيل")]),
         due: guess(hs, ["transfer", tr("تحويل"), "due", "payable", tr("مستحق")]),
@@ -517,7 +556,12 @@ function ExcelImporter({ company, riders, onApply }) {
     const results = []; const matched = new Set();
     rows.forEach((r) => {
       const keyVal = r[map.key];
-      const rider = riders.find((rd) => rd.company === company && (normPhone(rd.phone) === normPhone(keyVal) || rd.name.trim() === String(keyVal).trim()));
+      const idVal = String(r[map.id] || "").trim();
+      const rider = riders.find((rd) => rd.company === company && (
+        (idVal && rd.companyId && String(rd.companyId).trim() === idVal) ||
+        normPhone(rd.phone) === normPhone(keyVal) ||
+        rd.name.trim() === String(keyVal).trim()
+      ));
       const orders = Number(r[map.orders]) || 0;
       const cod = Number(r[map.cod]) || 0;
       const transferDue = isTalabat ? (Number(r[map.due]) || cod) : cod;
@@ -532,10 +576,10 @@ function ExcelImporter({ company, riders, onApply }) {
 
   const downloadTemplate = () => {
     const rs = riders.filter((r) => r.company === company);
-    const header = ["الهاتف / Phone", "الاسم / Name", "الطلبات / Orders", "COD"];
-    const body = rs.map((r) => [r.phone, r.name, "", ""]);
+    const header = ["الايدي / ID", "الهاتف / Phone", "الاسم / Name", "الطلبات / Orders", "COD"];
+    const body = rs.map((r) => [r.companyId || "", r.phone, r.name, "", ""]);
     const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-    ws["!cols"] = [{ wch: 16 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
+    ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "template");
     XLSX.writeFile(wb, "MrDelivery-" + company + "-" + todayStr() + ".xlsx");
@@ -556,6 +600,7 @@ function ExcelImporter({ company, riders, onApply }) {
         <div className="mt-5 border-t border-slate-100 pt-4">
           <p className="text-xs text-slate-500 mb-3">{tr("طابق الأعمدة")} ({rows.length} {tr("صف")}):</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Field label={t("ID الشركة", "Company ID")}><select className={inputCls} value={map.id} onChange={(e) => setMap({ ...map, id: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
             <Field label={tr("المطابقة (هاتف/اسم)")}><select className={inputCls} value={map.key} onChange={(e) => setMap({ ...map, key: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
             <Field label={tr("عدد الطلبات")}><select className={inputCls} value={map.orders} onChange={(e) => setMap({ ...map, orders: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
             <Field label={tr("مبلغ COD")}><select className={inputCls} value={map.cod} onChange={(e) => setMap({ ...map, cod: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
@@ -707,7 +752,7 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
 
   const parsePaste = () => text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
     const p = l.split(/\t|,|،|  +/).map((s) => s.trim());
-    return { name: p[0] || "", phone: p[1] || "", type: p[2] || "", area: p[3] || "", civil: p[4] || "", bank: p[5] || "" };
+    return { name: p[0] || "", phone: p[1] || "", companyId: p[2] || "", type: p[3] || "", area: p[4] || "", commission: p[5] || "", civil: p[6] || "", bank: p[7] || "" };
   });
   const onFile = (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -736,8 +781,8 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
   const addAll = () => {
     if (valid.length === 0) return;
     const news = valid.map((x) => ({
-      id: uid(), name: x.name, phone: x.phone, civil: x.civil, area: x.rarea, company: company || comp, type: x.rtype,
-      joinDate: todayStr(), status: "Active", bank: x.bank, notes: "", username: x.phone, password: pw, lastWorked: null,
+      id: uid(), name: x.name, phone: x.phone, companyId: x.companyId || "", civil: x.civil, area: x.rarea, commission: x.commission || "", company: company || comp, type: x.rtype,
+      joinDate: todayStr(), status: "Active", bank: x.bank, bankName: "", swift: "", notes: "", username: x.phone, password: pw, lastWorked: null,
     }));
     onAdd(news);
   };
@@ -760,7 +805,7 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
 
       {mode === "paste" ? (
         <div>
-          <p className="text-xs text-slate-500 mb-2">{tr("كل مندوب في سطر، بالترتيب:")} <b>{tr("الاسم، الهاتف، النوع، المنطقة، رقم المدني، رقم الحساب")}</b> (افصل بفاصلة أو Tab). أي خانة فارغة تأخذ الافتراضي فوق. المدني والحساب اختياريان.</p>
+          <p className="text-xs text-slate-500 mb-2">{tr("كل مندوب في سطر، بالترتيب:")} <b>{tr("الاسم، الهاتف، ID الشركة، النوع، المنطقة، الكوميشن، المدني، الحساب")}</b> (افصل بفاصلة أو Tab). أي خانة فارغة تأخذ الافتراضي فوق. المدني والحساب اختياريان.</p>
           <textarea className={inputCls + " font-mono text-xs"} rows={7} dir="rtl" value={text} onChange={(e) => setText(e.target.value)}
             placeholder={tr("أحمد البلوشي، 92001010، فريلانسر، صحار، 11223344، OM12 0001 9999\nسعيد الكندي، 93004050، فول تايم، نزوى،،")} />
         </div>
@@ -816,7 +861,7 @@ function Riders({ db, save, company }) {
   const scoped = db.riders.filter((r) => (!company || r.company === company));
   const allAreas = Array.from(new Set(db.riders.map((r) => r.area).filter(Boolean))).sort();
   const areas = Array.from(new Set(scoped.map((r) => r.area).filter(Boolean))).sort();
-  const blank = { name: "", phone: "", civil: "", area: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), status: "Active", bank: "", notes: "", username: "", password: "1234" };
+  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), status: "Active", bank: "", bankName: "", swift: "", notes: "", username: "", password: "1234" };
   const list = scoped.filter((r) =>
     (company || cf === "all" || r.company === cf) &&
     (af === "all" || (r.area || "") === af) &&
@@ -847,7 +892,7 @@ function Riders({ db, save, company }) {
       <Card className="overflow-hidden"><div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-            {[tr("المندوب"), tr("الهاتف"), tr("المدني"), tr("المنطقة"), tr("الشركة"), tr("النوع"), tr("الحالة"), tr("آخر عمل"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
+            {[tr("المندوب"), "ID", tr("الهاتف"), tr("المدني"), tr("المنطقة"), tr("الشركة"), tr("النوع"), tr("الحالة"), tr("آخر عمل"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
             {list.map((r) => {
@@ -855,6 +900,7 @@ function Riders({ db, save, company }) {
               return (
                 <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
                   <td className="py-3 px-3 font-semibold text-slate-800" style={red ? { color: "#c0341d" } : {}}>{r.name}{red && " 🔴"}</td>
+                  <td className="px-3 text-slate-500" dir="ltr">{r.companyId || "—"}</td>
                   <td className="px-3 text-slate-600" dir="ltr">{r.phone}</td>
                   <td className="px-3 text-slate-500" dir="ltr">{r.civil || "—"}</td>
                   <td className="px-3 text-slate-600">{r.area ? <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-slate-400" />{r.area}</span> : "—"}</td>
@@ -866,7 +912,7 @@ function Riders({ db, save, company }) {
                 </tr>
               );
             })}
-            {list.length === 0 && <tr><td colSpan={9} className="py-8 text-center text-slate-400">{tr("لا يوجد مناديب")}</td></tr>}
+            {list.length === 0 && <tr><td colSpan={10} className="py-8 text-center text-slate-400">{tr("لا يوجد مناديب")}</td></tr>}
           </tbody>
         </table>
       </div></Card>
@@ -881,8 +927,12 @@ function Riders({ db, save, company }) {
             <Field label={tr("الاسم")}><input className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
             <Field label={tr("رقم الهاتف")}><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
             <Field label={tr("رقم المدني")}><input className={inputCls} dir="ltr" value={editing.civil || ""} onChange={(e) => setEditing({ ...editing, civil: e.target.value })} /></Field>
+            <Field label={t("ID المندوب في الشركة", "Company Rider ID")}><input className={inputCls} dir="ltr" value={editing.companyId || ""} onChange={(e) => setEditing({ ...editing, companyId: e.target.value })} placeholder={t("مُعرّف المندوب من الشركة", "rider id from company")} /></Field>
             <Field label={tr("المنطقة / المحافظة")}><input className={inputCls} list="mrd-areas" value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value })} placeholder={tr("نزوى / صحار / صلالة...")} /></Field>
-            <Field label={tr("الحساب البنكي")}><input className={inputCls} dir="ltr" value={editing.bank} onChange={(e) => setEditing({ ...editing, bank: e.target.value })} /></Field>
+            <Field label={t("الكوميشن للطلب (فريلانسر)", "Commission per order (Freelancer)")}><input className={inputCls} dir="ltr" type="number" step="0.001" value={editing.commission || ""} onChange={(e) => setEditing({ ...editing, commission: e.target.value })} placeholder={t("مثال 1.400", "e.g. 1.400")} /></Field>
+            <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={editing.bankName || ""} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setEditing({ ...editing, bankName: e.target.value, swift: b ? b.swift : "" }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
+            <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} dir="ltr" value={editing.bank} onChange={(e) => setEditing({ ...editing, bank: e.target.value })} /></Field>
+            <Field label={t("سويفت كود", "SWIFT Code")}><input className={inputCls} dir="ltr" value={editing.swift || ""} onChange={(e) => setEditing({ ...editing, swift: e.target.value })} placeholder={t("يُعبّأ تلقائياً من البنك", "auto-filled from bank")} /></Field>
             <Field label={tr("الشركة")}><select className={inputCls} value={editing.company} disabled={!!company} onChange={(e) => setEditing({ ...editing, company: e.target.value })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
             <Field label={tr("النوع")}><select className={inputCls} value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select></Field>
             <Field label={tr("الحالة")}><select className={inputCls} value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></Field>
