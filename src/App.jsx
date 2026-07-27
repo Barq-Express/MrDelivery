@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Truck, Wallet, FileBarChart, LogOut, Plus, Pencil,
   Search, Upload, CheckCircle2, XCircle, AlertTriangle, Banknote, Download,
   Printer, Eye, Menu, X, CircleUserRound, ShieldCheck, RefreshCw, Bike,
-  CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin, Settings, Globe
+  CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin, Settings, Globe, Trash2
 } from "lucide-react";
 
 /* ============================================================
@@ -400,6 +400,7 @@ function normalizeDB(db) {
     attendance: db.attendance || {},
     employees: db.employees || [],
     staff: db.staff || {},
+    archive: db.archive || [],
   };
 }
 
@@ -527,11 +528,24 @@ function ExcelImporter({ company, riders, onApply }) {
   const [headers, setHeaders] = useState(null);
   const [rows, setRows] = useState([]);
   const [map, setMap] = useState({ id: 0, key: 1, orders: 3, cod: 4, due: 5 });
+  const [edits, setEdits] = useState({});
   const [fileName, setFileName] = useState("");
   const fileRef = useRef();
   const isTalabat = company === "Talabat";
 
   const guess = (hs, words) => { const i = hs.findIndex((h) => words.some((w) => String(h).toLowerCase().includes(w))); return i >= 0 ? i : 0; };
+
+  const matchRider = (r) => {
+    const idVal = String(r[map.id] || "").trim();
+    const keyVal = r[map.key];
+    return riders.find((rd) => rd.company === company && (
+      (idVal && rd.companyId && String(rd.companyId).trim() === idVal) ||
+      normPhone(rd.phone) === normPhone(keyVal) ||
+      rd.name.trim() === String(keyVal).trim()
+    ));
+  };
+  const valOf = (r, i, which) => (edits[i] && edits[i][which] !== undefined && edits[i][which] !== "") ? edits[i][which] : r[map[which]];
+  const setVal = (i, which, v) => setEdits((e) => ({ ...e, [i]: { ...(e[i] || {}), [which]: v } }));
 
   const onFile = (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -554,23 +568,17 @@ function ExcelImporter({ company, riders, onApply }) {
 
   const apply = () => {
     const results = []; const matched = new Set();
-    rows.forEach((r) => {
-      const keyVal = r[map.key];
-      const idVal = String(r[map.id] || "").trim();
-      const rider = riders.find((rd) => rd.company === company && (
-        (idVal && rd.companyId && String(rd.companyId).trim() === idVal) ||
-        normPhone(rd.phone) === normPhone(keyVal) ||
-        rd.name.trim() === String(keyVal).trim()
-      ));
-      const orders = Number(r[map.orders]) || 0;
-      const cod = Number(r[map.cod]) || 0;
+    rows.forEach((r, i) => {
+      const rider = matchRider(r);
+      const orders = Number(valOf(r, i, "orders")) || 0;
+      const cod = Number(valOf(r, i, "cod")) || 0;
       const transferDue = isTalabat ? (Number(r[map.due]) || cod) : cod;
-      results.push({ riderId: rider ? rider.id : null, name: rider ? rider.name : String(keyVal), matched: !!rider, orders, cod, transferDue });
-      if (rider) matched.add(rider.id);
+      results.push({ riderId: rider ? rider.id : null, name: rider ? rider.name : String(r[map.key] || r[map.id]), matched: !!rider, orders, cod, transferDue });
+      if (rider && (orders > 0 || cod > 0)) matched.add(rider.id); // worked only if has orders or COD
     });
     const notWorked = riders.filter((r) => r.company === company && r.status === "Active" && !matched.has(r.id)).map((r) => r.id);
     onApply({ id: uid(), company, date: todayStr(), fileName, results, notWorkedIds: notWorked });
-    setHeaders(null); setRows([]); setFileName("");
+    setHeaders(null); setRows([]); setFileName(""); setEdits({});
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -606,6 +614,28 @@ function ExcelImporter({ company, riders, onApply }) {
             <Field label={tr("مبلغ COD")}><select className={inputCls} value={map.cod} onChange={(e) => setMap({ ...map, cod: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
             {isTalabat && <Field label={tr("المطلوب تحويله")}><select className={inputCls} value={map.due} onChange={(e) => setMap({ ...map, due: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>}
           </div>
+
+          <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-600">{t("راجع وعدّل قبل الاعتماد — الطلبات و COD قابلة للتعديل", "Review & edit before applying — Orders and COD are editable")}</div>
+            <div className="max-h-72 overflow-auto"><table className="w-full text-xs">
+              <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), "ID", tr("عدد الطلبات"), tr("مبلغ COD"), ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.slice(0, 300).map((r, i) => {
+                  const rider = matchRider(r);
+                  return (
+                    <tr key={i} className="border-b border-slate-50">
+                      <td className="py-1.5 px-2 font-semibold">{rider ? rider.name : (String(r[map.key] || "") || "—")}</td>
+                      <td className="px-2 text-slate-500" dir="ltr">{String(r[map.id] || "—")}</td>
+                      <td className="px-2"><input type="number" className="w-20 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "orders")} onChange={(e) => setVal(i, "orders", e.target.value)} /></td>
+                      <td className="px-2"><input type="number" step="0.001" className="w-24 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "cod")} onChange={(e) => setVal(i, "cod", e.target.value)} /></td>
+                      <td className="px-2">{rider ? <span style={{ color: "#0f9d58" }}>✓</span> : <span style={{ color: "#c0341d" }}>{tr("غير مسجل")}</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table></div>
+          </div>
+
           <div className="mt-4"><Btn onClick={apply}><CheckCircle2 size={16} /> {tr("معالجة الملف")}</Btn></div>
         </div>
       )}
@@ -747,7 +777,7 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
   const [text, setText] = useState("");
   const [headers, setHeaders] = useState(null);
   const [xrows, setXrows] = useState([]);
-  const [xmap, setXmap] = useState({ name: 0, phone: 1, type: 2, area: 3, civil: 4, bank: 5 });
+  const [xmap, setXmap] = useState({ name: 0, phone: 1, companyId: 2, type: 3, area: 4, commission: 5, civil: 6, bank: 7, bankName: 8, swift: 9 });
   const allAreas = Array.from(new Set(existing.map((r) => r.area).filter(Boolean))).sort();
 
   const parsePaste = () => text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
@@ -762,10 +792,10 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
       const hs = (data[0] || []).map((x) => String(x));
       setHeaders(hs); setXrows(data.slice(1).filter((r) => r.some((c) => c !== "")));
       const g = (w) => { const i = hs.findIndex((h) => w.some((x) => String(h).toLowerCase().includes(x))); return i >= 0 ? i : 0; };
-      setXmap({ name: g(["name", tr("اسم")]), phone: g(["phone", tr("هاتف"), tr("جوال"), "mobile"]), type: g(["type", tr("نوع")]), area: g(["area", "region", tr("منطقة"), tr("محافظة")]), civil: g(["civil", tr("مدني"), "id", tr("بطاقة")]), bank: g(["bank", tr("حساب"), "iban", "account"]) });
+      setXmap({ name: g(["name", tr("اسم")]), phone: g(["phone", tr("هاتف"), tr("جوال"), "mobile"]), companyId: g(["id", "ايدي", "الايدي", "معرف"]), type: g(["type", tr("نوع")]), area: g(["area", "region", tr("منطقة"), tr("محافظة")]), commission: g(["commission", tr("كوميشن"), tr("عمولة")]), civil: g(["civil", tr("مدني"), tr("بطاقة")]), bank: g(["account", tr("حساب"), "iban"]), bankName: g(["bank name", tr("البنك"), "bankname"]), swift: g(["swift", tr("سويفت")]) });
     });
   };
-  const parseExcel = () => xrows.map((r) => ({ name: String(r[xmap.name] || "").trim(), phone: String(r[xmap.phone] || "").trim(), type: String(r[xmap.type] || "").trim(), area: String(r[xmap.area] || "").trim(), civil: String(r[xmap.civil] || "").trim(), bank: String(r[xmap.bank] || "").trim() }));
+  const parseExcel = () => xrows.map((r) => ({ name: String(r[xmap.name] || "").trim(), phone: String(r[xmap.phone] || "").trim(), companyId: String(r[xmap.companyId] || "").trim(), type: String(r[xmap.type] || "").trim(), area: String(r[xmap.area] || "").trim(), commission: String(r[xmap.commission] || "").trim(), civil: String(r[xmap.civil] || "").trim(), bank: String(r[xmap.bank] || "").trim(), bankName: String(r[xmap.bankName] || "").trim(), swift: String(r[xmap.swift] || "").trim() }));
 
   const parsed = (mode === "paste" ? parsePaste() : (headers ? parseExcel() : [])).filter((x) => x.name || x.phone);
   const existingPhones = new Set(existing.map((r) => normPhone(r.phone)));
@@ -778,11 +808,20 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
   });
   const valid = rows.filter((x) => !x.dup);
 
+  const downloadRegTemplate = () => {
+    const header = ["الاسم / Name", "الهاتف / Phone", "الايدي / ID", "النوع / Type", "المنطقة / Area", "الكوميشن / Commission", "المدني / Civil", "رقم الحساب / Account", "البنك / Bank", "سويفت / SWIFT"];
+    const example = ["أحمد البلوشي", "92001010", "SN-1001", "Freelancer", "نزوى", "1.400", "11223344", "OM12 0001 9999", "Bank Muscat", "BMUSOMRX"];
+    const ws = XLSX.utils.aoa_to_sheet([header, example]);
+    ws["!cols"] = header.map(() => ({ wch: 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "riders");
+    XLSX.writeFile(wb, "MrDelivery-RidersTemplate.xlsx");
+  };
   const addAll = () => {
     if (valid.length === 0) return;
     const news = valid.map((x) => ({
       id: uid(), name: x.name, phone: x.phone, companyId: x.companyId || "", civil: x.civil, area: x.rarea, commission: x.commission || "", company: company || comp, type: x.rtype,
-      joinDate: todayStr(), status: "Active", bank: x.bank, bankName: "", swift: "", notes: "", username: x.phone, password: pw, lastWorked: null,
+      joinDate: todayStr(), status: "Active", bank: x.bank, bankName: x.bankName || "", swift: x.swift || "", notes: "", username: x.phone, password: pw, lastWorked: null,
     }));
     onAdd(news);
   };
@@ -811,10 +850,10 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
         </div>
       ) : (
         <div>
-          <input type="file" accept=".xlsx,.xls,.csv" onChange={onFile} className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold" />
+          <div className="flex items-center gap-2 flex-wrap"><input type="file" accept=".xlsx,.xls,.csv" onChange={onFile} className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold" /><Btn kind="ghost" onClick={downloadRegTemplate}><Download size={15} /> {t("تحميل نموذج تسجيل", "Download Registration Template")}</Btn></div>
           {headers && (
             <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mt-3">
-              {[["name", tr("الاسم")], ["phone", tr("الهاتف")], ["type", tr("النوع")], ["area", tr("المنطقة")], ["civil", tr("المدني")], ["bank", tr("الحساب")]].map(([k, l]) => (
+              {[["name", tr("الاسم")], ["phone", tr("الهاتف")], ["companyId", "ID"], ["type", tr("النوع")], ["area", tr("المنطقة")], ["commission", t("الكوميشن", "Commission")], ["civil", tr("المدني")], ["bank", t("رقم الحساب", "Account")], ["bankName", t("البنك", "Bank")], ["swift", t("سويفت", "SWIFT")]].map(([k, l]) => (
                 <Field key={k} label={l}><select className={inputCls} value={xmap[k]} onChange={(e) => setXmap({ ...xmap, [k]: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
               ))}
             </div>
@@ -855,7 +894,7 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
   );
 }
 
-function Riders({ db, save, company }) {
+function Riders({ db, save, company, user }) {
   const [q, setQ] = useState(""); const [cf, setCf] = useState("all"); const [af, setAf] = useState("all");
   const [editing, setEditing] = useState(null); const [bulk, setBulk] = useState(false);
   const scoped = db.riders.filter((r) => (!company || r.company === company));
@@ -866,6 +905,21 @@ function Riders({ db, save, company }) {
     (company || cf === "all" || r.company === cf) &&
     (af === "all" || (r.area || "") === af) &&
     (r.name.includes(q) || r.phone.includes(q) || (r.civil || "").includes(q) || (r.area || "").includes(q)));
+  const isAdmin = user && (user.role === "Admin" || user.role === "Operations Manager");
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetWord, setResetWord] = useState("");
+  const archiveRider = (r) => {
+    if (!window.confirm(tr("نقل هذا المندوب إلى الأرشيف؟"))) return;
+    save({ ...db, riders: db.riders.filter((x) => x.id !== r.id), archive: [...(db.archive || []), { ...r, archivedAt: todayStr() }] });
+  };
+  const archiveAll = () => {
+    const w = resetWord.trim().toLowerCase();
+    if (w !== "مسح" && w !== "reset") return;
+    const ids = new Set(list.map((r) => r.id));
+    const moved = db.riders.filter((r) => ids.has(r.id)).map((r) => ({ ...r, archivedAt: todayStr() }));
+    save({ ...db, riders: db.riders.filter((r) => !ids.has(r.id)), archive: [...(db.archive || []), ...moved] });
+    setResetOpen(false); setResetWord("");
+  };
   const submit = () => {
     const r = { ...editing };
     if (!r.name || !r.phone) return alert(tr("الاسم ورقم الهاتف مطلوبان"));
@@ -885,6 +939,7 @@ function Riders({ db, save, company }) {
           <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">{tr("كل المناطق")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
         </div>
         <div className="flex gap-2">
+          {isAdmin && <Btn kind="ghost" onClick={() => { setResetWord(""); setResetOpen(true); }} className="!text-red-600"><Trash2 size={16} /> {t("مسح كل المناديب", "Reset All Riders")}</Btn>}
           <Btn kind="dark" onClick={() => setBulk(true)}><Upload size={16} /> {tr("تسجيل جماعي")}</Btn>
           <Btn onClick={() => setEditing(blank)}><Plus size={16} /> {tr("إضافة مندوب")}</Btn>
         </div>
@@ -908,7 +963,12 @@ function Riders({ db, save, company }) {
                   <td className="px-3 text-slate-600">{r.type === "Freelancer" ? tr("فريلانسر") : tr("ثابت")}</td>
                   <td className="px-3">{statusPill(r.status)}</td>
                   <td className="px-3 text-slate-500">{r.lastWorked || "—"}</td>
-                  <td className="px-3"><button onClick={() => setEditing(r)} className="text-slate-400 hover:text-slate-700"><Pencil size={16} /></button></td>
+                  <td className="px-3">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setEditing(r)} className="text-slate-400 hover:text-slate-700" title={t("تعديل", "Edit")}><Pencil size={16} /></button>
+                      {isAdmin && <button onClick={() => archiveRider(r)} className="text-slate-400 hover:text-red-600" title={t("نقل للأرشيف", "Archive")}><XCircle size={16} /></button>}
+                    </div>
+                  </td>
                 </tr>
               );
             })}
@@ -916,6 +976,21 @@ function Riders({ db, save, company }) {
           </tbody>
         </table>
       </div></Card>
+
+      <Modal open={resetOpen} onClose={() => setResetOpen(false)} title={t("مسح كل المناديب", "Reset All Riders")}>
+        <div className="space-y-4">
+          <div className="p-3 rounded-lg text-sm" style={{ background: "#fef2f2", color: "#c0341d" }}>
+            {t("سيتم نقل جميع المناديب المعروضين (", "All listed riders (")}{list.length}{t(") إلى الأرشيف. بياناتهم تبقى محفوظة ويمكن استعادتهم لاحقاً.", ") will be moved to the Archive. Their data is kept and can be restored later.")}
+          </div>
+          <Field label={t('اكتب كلمة "مسح" للتأكيد', 'Type "reset" to confirm')}>
+            <input className={inputCls} value={resetWord} onChange={(e) => setResetWord(e.target.value)} placeholder={t("مسح", "reset")} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Btn kind="ghost" onClick={() => setResetOpen(false)}>{tr("إلغاء")}</Btn>
+            <Btn onClick={archiveAll} className="!bg-red-600" disabled={resetWord.trim() !== "مسح" && resetWord.trim().toLowerCase() !== "reset"}>{t("تأكيد المسح", "Confirm Reset")}</Btn>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={bulk} onClose={() => setBulk(false)} title={tr("تسجيل جماعي للمناديب")} wide>
         <RiderBulkAdd company={company} existing={db.riders} onAdd={addBulk} onClose={() => setBulk(false)} />
@@ -1252,7 +1327,7 @@ const CTABS = [
   { key: "reports", ar: tr("التقارير"), en: "Reports", icon: FileBarChart },
 ];
 
-function CompanyWindow({ company, db, save }) {
+function CompanyWindow({ company, db, save, user }) {
   const [tab, setTab] = useState("overview");
   return (
     <div className="space-y-4">
@@ -1274,7 +1349,7 @@ function CompanyWindow({ company, db, save }) {
       </div>
       <div>
         {tab === "overview" && <OverviewTab company={company} db={db} />}
-        {tab === "riders" && <Riders db={db} save={save} company={company} />}
+        {tab === "riders" && <Riders db={db} save={save} company={company} user={user} />}
         {tab === "orders" && <OrdersTab company={company} db={db} save={save} />}
         {tab === "transfers" && <TransfersTab company={company} db={db} save={save} />}
         {tab === "recon" && <ReconTab company={company} db={db} save={save} />}
@@ -1624,6 +1699,68 @@ function Employees({ db, save }) {
   );
 }
 
+function ArchiveWindow({ db, save }) {
+  const [q, setQ] = useState("");
+  const archive = db.archive || [];
+  const list = archive.filter((r) => r.name.includes(q) || (r.phone || "").includes(q) || (r.companyId || "").includes(q));
+  const restore = (r) => {
+    if (!window.confirm(t("استعادة هذا المندوب إلى القائمة؟", "Restore this rider to the active list?"))) return;
+    const { archivedAt, ...clean } = r;
+    save({ ...db, archive: archive.filter((x) => x.id !== r.id), riders: [...db.riders, clean] });
+  };
+  const purge = (r) => {
+    if (!window.confirm(t("حذف نهائي لهذا المندوب مع كل بياناته (طلبات + تحويلات)؟ لا يمكن التراجع.", "Permanently delete this rider and all their data (orders + transfers)? This cannot be undone."))) return;
+    const imports = db.imports.map((im) => ({ ...im, results: im.results.filter((x) => x.riderId !== r.id), notWorkedIds: (im.notWorkedIds || []).filter((id) => id !== r.id) }));
+    save({ ...db, archive: archive.filter((x) => x.id !== r.id), imports, transfers: db.transfers.filter((tt) => tt.riderId !== r.id) });
+  };
+  const purgeAll = () => {
+    if (archive.length === 0) return;
+    if (!window.confirm(t("إفراغ الأرشيف نهائياً وحذف كل بياناته؟ لا يمكن التراجع.", "Permanently empty the archive and delete all its data? This cannot be undone."))) return;
+    const ids = new Set(archive.map((r) => r.id));
+    const imports = db.imports.map((im) => ({ ...im, results: im.results.filter((x) => !ids.has(x.riderId)), notWorkedIds: (im.notWorkedIds || []).filter((id) => !ids.has(id)) }));
+    save({ ...db, archive: [], imports, transfers: db.transfers.filter((tt) => !ids.has(tt.riderId)) });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 pb-1">
+        <span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.navy }}><Trash2 size={18} color="#fff" /></span>
+        <h2 className="font-extrabold text-lg text-slate-800">{t("أرشيف المناديب", "Riders Archive")}</h2>
+      </div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="relative"><Search size={16} className="absolute right-3 top-2.5 text-slate-400" />
+          <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={t("بحث", "Search")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        {archive.length > 0 && <Btn kind="ghost" onClick={purgeAll} className="!text-red-600"><Trash2 size={16} /> {t("إفراغ الأرشيف", "Empty Archive")}</Btn>}
+      </div>
+      <Card className="overflow-hidden"><div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
+            {[tr("المندوب"), "ID", tr("الهاتف"), tr("الشركة"), t("تاريخ الأرشفة", "Archived"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {list.map((r) => (
+              <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="py-3 px-3 font-semibold text-slate-700">{r.name}</td>
+                <td className="px-3 text-slate-500" dir="ltr">{r.companyId || "—"}</td>
+                <td className="px-3 text-slate-600" dir="ltr">{r.phone}</td>
+                <td className="px-3">{companyPill(r.company)}</td>
+                <td className="px-3 text-slate-500">{r.archivedAt || "—"}</td>
+                <td className="px-3">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => restore(r)} className="text-xs font-semibold" style={{ color: "#0f9d58" }}>{t("استعادة", "Restore")}</button>
+                    <button onClick={() => purge(r)} className="text-xs font-semibold text-red-600">{t("حذف نهائي", "Delete")}</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {list.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-slate-400">{t("الأرشيف فارغ", "Archive is empty")}</td></tr>}
+          </tbody>
+        </table>
+      </div></Card>
+    </div>
+  );
+}
+
 function sidebarFor(user) {
   if (user.role === "Supervisor") return [{ key: "company:" + user.company, label: cLabel(user.company), kind: "company", company: user.company }];
   const items = [{ key: "dashboard", label: t("اللوحة العامة", "Dashboard"), kind: "dashboard" }];
@@ -1631,12 +1768,13 @@ function sidebarFor(user) {
   if (user.role === "Admin" || user.role === "Operations Manager") {
     items.push({ key: "shifts", label: t("الشفتات (كل الشركات)", "Shifts (All)"), kind: "shifts" });
     items.push({ key: "employees", label: t("الموظفون", "Employees"), kind: "employees" });
+    items.push({ key: "archive", label: t("الأرشيف", "Archive"), kind: "archive" });
     items.push({ key: "allriders", label: t("كل المناديب", "All Riders"), kind: "allriders" });
     items.push({ key: "reports", label: t("تقارير عامة", "Reports"), kind: "reports" });
   }
   return items;
 }
-const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog };
+const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, archive: Trash2 };
 
 export default function App() {
   const [session, setSession] = useState(undefined);
@@ -1747,10 +1885,11 @@ export default function App() {
   const Page = () => {
     if (!activeItem) return <GlobalDashboard db={db} onOpen={(c) => setRoute("company:" + c)} />;
     if (activeItem.kind === "dashboard") return <GlobalDashboard db={db} onOpen={(c) => setRoute("company:" + c)} />;
-    if (activeItem.kind === "company") return <CompanyWindow company={activeItem.company} db={db} save={save} />;
-    if (activeItem.kind === "allriders") return <Riders db={db} save={save} company={null} />;
+    if (activeItem.kind === "company") return <CompanyWindow company={activeItem.company} db={db} save={save} user={user} />;
+    if (activeItem.kind === "allriders") return <Riders db={db} save={save} company={null} user={user} />;
     if (activeItem.kind === "shifts") return <ShiftsWindow db={db} save={save} />;
     if (activeItem.kind === "employees") return <Employees db={db} save={save} />;
+    if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
     if (activeItem.kind === "reports") return <ReportsScoped db={db} company={null} />;
     return null;
   };
