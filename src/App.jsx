@@ -530,6 +530,17 @@ function ExcelImporter({ company, riders, onApply }) {
     if (fileRef.current) fileRef.current.value = "";
   };
 
+  const downloadTemplate = () => {
+    const rs = riders.filter((r) => r.company === company);
+    const header = ["الهاتف / Phone", "الاسم / Name", "الطلبات / Orders", "COD"];
+    const body = rs.map((r) => [r.phone, r.name, "", ""]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+    ws["!cols"] = [{ wch: 16 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "template");
+    XLSX.writeFile(wb, "MrDelivery-" + company + "-" + todayStr() + ".xlsx");
+  };
+
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -539,6 +550,7 @@ function ExcelImporter({ company, riders, onApply }) {
         </div>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onFile}
           className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold" />
+        <Btn kind="ghost" onClick={downloadTemplate}><Download size={15} /> {t("تحميل نموذج", "Download Template")}</Btn>
       </div>
       {headers && (
         <div className="mt-5 border-t border-slate-100 pt-4">
