@@ -525,6 +525,7 @@ function riderMoney(db, riderId) {
    Excel importer (per company)
    ============================================================ */
 function ExcelImporter({ company, riders, onApply }) {
+  const [sheetDate, setSheetDate] = useState(todayStr());
   const [headers, setHeaders] = useState(null);
   const [rows, setRows] = useState([]);
   const [map, setMap] = useState({ id: 0, key: 1, orders: 3, cod: 4, due: 5 });
@@ -577,7 +578,7 @@ function ExcelImporter({ company, riders, onApply }) {
       if (rider && (orders > 0 || cod > 0)) matched.add(rider.id); // worked only if has orders or COD
     });
     const notWorked = riders.filter((r) => r.company === company && r.status === "Active" && !matched.has(r.id)).map((r) => r.id);
-    onApply({ id: uid(), company, date: todayStr(), fileName, results, notWorkedIds: notWorked });
+    onApply({ id: uid(), company, date: sheetDate, fileName, results, notWorkedIds: notWorked });
     setHeaders(null); setRows([]); setFileName(""); setEdits({});
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -603,6 +604,7 @@ function ExcelImporter({ company, riders, onApply }) {
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onFile}
           className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold" />
         <Btn kind="ghost" onClick={downloadTemplate}><Download size={15} /> {t("تحميل نموذج", "Download Template")}</Btn>
+        <div className="mt-3 max-w-xs"><Field label={t("تاريخ الشيت", "Sheet Date")}><input type="date" className={inputCls} value={sheetDate} onChange={(e) => setSheetDate(e.target.value)} /></Field></div>
       </div>
       {headers && (
         <div className="mt-5 border-t border-slate-100 pt-4">
@@ -900,7 +902,7 @@ function Riders({ db, save, company, user }) {
   const scoped = db.riders.filter((r) => (!company || r.company === company));
   const allAreas = Array.from(new Set(db.riders.map((r) => r.area).filter(Boolean))).sort();
   const areas = Array.from(new Set(scoped.map((r) => r.area).filter(Boolean))).sort();
-  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), status: "Active", bank: "", bankName: "", swift: "", notes: "", username: "", password: "1234" };
+  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "", status: "Active", bank: "", bankName: "", swift: "", notes: "", username: "", password: "1234" };
   const list = scoped.filter((r) =>
     (company || cf === "all" || r.company === cf) &&
     (af === "all" || (r.area || "") === af) &&
@@ -1011,6 +1013,8 @@ function Riders({ db, save, company, user }) {
             <Field label={tr("الشركة")}><select className={inputCls} value={editing.company} disabled={!!company} onChange={(e) => setEditing({ ...editing, company: e.target.value })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
             <Field label={tr("النوع")}><select className={inputCls} value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value })}><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select></Field>
             <Field label={tr("الحالة")}><select className={inputCls} value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></Field>
+            <Field label={t("تاريخ الانضمام", "Join Date")}><input type="date" className={inputCls} value={editing.joinDate || ""} onChange={(e) => setEditing({ ...editing, joinDate: e.target.value })} /></Field>
+            <Field label={t("تاريخ توقيع العقد", "Contract Sign Date")}><input type="date" className={inputCls} value={editing.contractDate || ""} onChange={(e) => setEditing({ ...editing, contractDate: e.target.value })} /></Field>
             <Field label={tr("كلمة مرور المندوب")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>
             <div className="col-span-2"><Field label={tr("ملاحظات")}><textarea className={inputCls} rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field></div>
             <div className="col-span-2 flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>{tr("إلغاء")}</Btn><Btn onClick={submit}>{tr("حفظ")}</Btn></div>
@@ -1058,6 +1062,21 @@ function OrdersTab({ company, db, save }) {
     const riders = db.riders.map((r) => (ids.has(r.id) ? { ...r, lastWorked: imp.date } : r));
     save({ ...db, imports: [...db.imports, imp], riders });
   };
+  const [editImp, setEditImp] = useState(null);
+  const setRow = (i, which, v) => setEditImp((e) => ({ ...e, results: e.results.map((r, idx) => (idx === i ? { ...r, [which]: v } : r)) }));
+  const saveImport = () => {
+    const results = editImp.results.map((r) => {
+      const orders = Number(r.orders) || 0; const cod = Number(r.cod) || 0;
+      const transferDue = company === "Talabat" ? (Number(r.transferDue) || cod) : cod;
+      return { ...r, orders, cod, transferDue };
+    });
+    const worked = new Set(results.filter((r) => r.riderId && (r.orders > 0 || r.cod > 0)).map((r) => r.riderId));
+    const notWorkedIds = db.riders.filter((r) => r.company === company && r.status === "Active" && !worked.has(r.id)).map((r) => r.id);
+    const imp = { ...editImp, results, notWorkedIds };
+    save({ ...db, imports: db.imports.map((im) => (im.id === imp.id ? imp : im)) });
+    setEditImp(null);
+  };
+  const deleteImport = (id) => { if (window.confirm(t("حذف هذا الشيت نهائياً؟", "Delete this sheet permanently?"))) save({ ...db, imports: db.imports.filter((im) => im.id !== id) }); };
   const note = {
     Talabat: tr("الطلبات: فريلانسر فقط. تُقرأ الطلبات و COD والمبلغ المطلوب تحويله من الشيت."),
     Snoonu: tr("سنونو: فريلانسر = 1.400/طلب · Full Time = 425 ثابت. COD يحوّل يومياً · الفريلانسر كل 10 أيام."),
@@ -1097,6 +1116,46 @@ function OrdersTab({ company, db, save }) {
           )}
         </Card>
       )}
+
+      {ims.length > 0 && (
+        <Card className="p-5">
+          <h3 className="font-bold text-slate-800 mb-3">{t("سجلّ الملفات المرفوعة", "Uploaded Sheets History")}</h3>
+          <div className="space-y-1 text-sm">
+            {ims.slice().reverse().map((im) => (
+              <div key={im.id} className="flex items-center justify-between border-b border-slate-50 py-2 flex-wrap gap-2">
+                <span className="text-slate-700"><b dir="ltr">{im.date}</b> · {im.fileName || "—"} · <span className="text-slate-400">{im.results.length} {tr("صف")}</span></span>
+                <span className="flex items-center gap-3">
+                  <button onClick={() => setEditImp(JSON.parse(JSON.stringify(im)))} className="text-xs font-semibold" style={{ color: BRAND.blue }}><Pencil size={13} className="inline" /> {t("تعديل", "Edit")}</button>
+                  <button onClick={() => deleteImport(im.id)} className="text-xs font-semibold text-red-600">{t("حذف", "Delete")}</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Modal open={!!editImp} onClose={() => setEditImp(null)} title={t("تعديل الشيت", "Edit Sheet")} wide>
+        {editImp && (
+          <div className="space-y-4">
+            <div className="max-w-xs"><Field label={t("تاريخ الشيت", "Sheet Date")}><input type="date" className={inputCls} value={editImp.date} onChange={(e) => setEditImp({ ...editImp, date: e.target.value })} /></Field></div>
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="max-h-80 overflow-auto"><table className="w-full text-xs">
+                <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), tr("عدد الطلبات"), tr("مبلغ COD")].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+                <tbody>
+                  {editImp.results.map((r, i) => (
+                    <tr key={i} className="border-b border-slate-50">
+                      <td className="py-1.5 px-2 font-semibold">{r.name}</td>
+                      <td className="px-2"><input type="number" className="w-20 rounded border border-slate-200 px-2 py-1" value={r.orders} onChange={(e) => setRow(i, "orders", e.target.value)} /></td>
+                      <td className="px-2"><input type="number" step="0.001" className="w-24 rounded border border-slate-200 px-2 py-1" value={r.cod} onChange={(e) => setRow(i, "cod", e.target.value)} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>
+            </div>
+            <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setEditImp(null)}>{tr("إلغاء")}</Btn><Btn onClick={saveImport}>{tr("حفظ")}</Btn></div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
