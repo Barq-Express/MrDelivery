@@ -906,7 +906,7 @@ function Riders({ db, save, company, user }) {
   const list = scoped.filter((r) =>
     (company || cf === "all" || r.company === cf) &&
     (af === "all" || (r.area || "") === af) &&
-    (r.name.includes(q) || r.phone.includes(q) || (r.civil || "").includes(q) || (r.area || "").includes(q)));
+    (r.name.includes(q) || r.phone.includes(q) || (r.companyId || "").includes(q) || (r.civil || "").includes(q) || (r.area || "").includes(q)));
   const isAdmin = user && (user.role === "Admin" || user.role === "Operations Manager");
   const [resetOpen, setResetOpen] = useState(false);
   const [resetWord, setResetWord] = useState("");
@@ -936,7 +936,7 @@ function Riders({ db, save, company, user }) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-2 flex-wrap items-center">
           <div className="relative"><Search size={16} className="absolute right-3 top-2.5 text-slate-400" />
-            <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={tr("بحث بالاسم/الهاتف/المدني/المنطقة")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={t("بحث: اسم / رقم / ID / منطقة", "Search: name / phone / ID / area")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           {!company && <select className={inputCls + " w-32"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">{tr("كل الشركات")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>}
           <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">{tr("كل المناطق")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
         </div>
@@ -1293,58 +1293,81 @@ function ReconTab({ company, db, save }) {
 
 function AttendanceTab({ company, db, save }) {
   const [q, setQ] = useState("");
-  const days = lastDays(10);
-  const importDates = new Set(db.imports.filter((im) => im.company === company).map((im) => im.date));
-  const presentOn = (rid, date) => db.imports.some((im) => im.company === company && im.date === date && im.results.some((r) => r.riderId === rid && r.matched));
-  const manual = (rid, date) => !!db.attendance[`${rid}:${date}`];
-  const toggle = (rid, date) => {
-    if (importDates.has(date)) return;
-    const key = `${rid}:${date}`; const att = { ...db.attendance };
+  const [typeF, setTypeF] = useState("all");
+  const [statusF, setStatusF] = useState("all");
+  const [areaF, setAreaF] = useState("all");
+  const dates = Array.from(new Set(db.imports.filter((im) => im.company === company).map((im) => im.date))).sort().reverse();
+  const [date, setDate] = useState(dates[0] || todayStr());
+  const areas = Array.from(new Set(db.riders.filter((r) => r.company === company).map((r) => r.area).filter(Boolean))).sort();
+  const hasFile = db.imports.some((im) => im.company === company && im.date === date);
+  const presentOn = (rid) => db.imports.some((im) => im.company === company && im.date === date && im.results.some((r) => r.riderId === rid && (r.orders > 0 || r.cod > 0))) || !!db.attendance[rid + ":" + date];
+  const toggle = (rid) => {
+    if (hasFile) return;
+    const key = rid + ":" + date; const att = { ...db.attendance };
     if (att[key]) delete att[key]; else att[key] = true;
     save({ ...db, attendance: att });
   };
-  const riders = db.riders.filter((r) => r.company === company && r.status === "Active" && (r.name.includes(q) || r.phone.includes(q)));
+  const base = db.riders.filter((r) => r.company === company);
+  const rows = base.map((r) => ({ ...r, present: presentOn(r.id) })).filter((r) => (
+    (r.name.includes(q) || (r.phone || "").includes(q) || (r.companyId || "").includes(q)) &&
+    (typeF === "all" || r.type === typeF) &&
+    (areaF === "all" || (r.area || "") === areaF) &&
+    (statusF === "all" || (statusF === "present" ? r.present : !r.present))
+  ));
+  const presentCount = base.filter((r) => presentOn(r.id)).length;
+
   return (
     <Card className="p-5">
-      <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-        <h3 className="font-bold text-slate-800 flex items-center gap-2"><CalendarCheck size={18} /> {t("الحضور والانصراف","Attendance")} — {cLabel(company)}</h3>
-        <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" />
-          <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={tr("بحث بالاسم أو الهاتف...")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-2"><CalendarCheck size={18} /> <h3 className="font-bold text-slate-800">{t("الحضور والغياب", "Attendance")} — {cLabel(company)}</h3></div>
+        <Btn kind="ghost" size="sm" onClick={() => exportExcel(rows.map((r) => ({ المندوب: r.name, الهاتف: r.phone, ID: r.companyId || "", المنطقة: r.area || "", النوع: r.type, الحالة: r.present ? tr("حاضر") : tr("غايب"), وقت_الشفت: (r.shiftStart || "") + (r.shiftEnd ? " - " + r.shiftEnd : ""), البنك: r.bankName || "", الحساب: r.bank || "", ملاحظات: r.notes || "" })), "Attendance_" + company + "_" + date)}><Download size={14} /> Excel</Btn>
       </div>
-      <p className="text-xs text-slate-500 mb-4">يُسجّل تلقائياً من ملف الطلبات: أي مندوب في الملف = حاضر ✓، وأي اسم غير موجود = غائب ✗. الأيام بدون ملف قابلة للتسجيل اليدوي. الأحمر = غير نشط {NO_WORK_DAYS}+ أيام.</p>
+
+      <div className="grid md:grid-cols-5 gap-2 mb-4">
+        <Field label={t("التاريخ", "Date")}>
+          {dates.length > 0
+            ? <select className={inputCls} value={date} onChange={(e) => setDate(e.target.value)}>{dates.map((d) => <option key={d} value={d}>{d}</option>)}</select>
+            : <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />}
+        </Field>
+        <Field label={t("الحالة", "Status")}><select className={inputCls} value={statusF} onChange={(e) => setStatusF(e.target.value)}><option value="all">{t("الكل", "All")}</option><option value="present">{t("حاضر", "Present")}</option><option value="absent">{t("غايب", "Absent")}</option></select></Field>
+        <Field label={t("النوع", "Type")}><select className={inputCls} value={typeF} onChange={(e) => setTypeF(e.target.value)}><option value="all">{t("الكل", "All")}</option><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select></Field>
+        <Field label={t("المنطقة", "Area")}><select className={inputCls} value={areaF} onChange={(e) => setAreaF(e.target.value)}><option value="all">{t("كل المناطق", "All Areas")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select></Field>
+        <Field label={t("بحث", "Search")}><input className={inputCls} placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></Field>
+      </div>
+
+      <div className="flex gap-4 text-xs mb-3">
+        <span style={{ color: "#0f9d58" }}>{t("حاضر", "Present")}: <b>{presentCount}</b></span>
+        <span style={{ color: "#c0341d" }}>{t("غايب", "Absent")}: <b>{base.length - presentCount}</b></span>
+        {!hasFile && <span className="text-slate-400">{t("لا يوجد ملف لهذا اليوم — يمكن التسجيل اليدوي", "No file for this day — manual marking allowed")}</span>}
+      </div>
+
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead><tr className="text-slate-500 border-b border-slate-200">
-            <th className="py-2 px-2 text-right font-semibold sticky right-0 bg-white">{tr("المندوب")}</th>
-            {days.map((d) => <th key={d} className="py-2 px-1 font-semibold text-center whitespace-nowrap">{d.slice(5)}</th>)}
+        <table className="w-full text-sm">
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
+            {[tr("المندوب"), "ID", tr("الهاتف"), tr("المنطقة"), tr("النوع"), t("الحالة", "Status")].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
-            {riders.map((r) => {
-              const red = daysSince(r.lastWorked) >= NO_WORK_DAYS;
-              return (
-                <tr key={r.id} className="border-b border-slate-50">
-                  <td className="py-2 px-2 font-semibold sticky right-0 bg-white whitespace-nowrap" style={red ? { color: "#c0341d" } : {}}>{r.name}{red && " 🔴"}</td>
-                  {days.map((d) => {
-                    const hasFile = importDates.has(d);
-                    const present = presentOn(r.id, d);
-                    const m = manual(r.id, d);
-                    let bg, col, sym;
-                    if (hasFile) { if (present) { bg = "#0f9d5822"; col = "#0f9d58"; sym = "✓"; } else { bg = "#c0341d22"; col = "#c0341d"; sym = "✗"; } }
-                    else if (m) { bg = "#0e4aff22"; col = "#0e4aff"; sym = "±"; }
-                    else { bg = "#f1f5f9"; col = "#cbd5e1"; sym = "·"; }
-                    return (<td key={d} className="text-center"><button onClick={() => toggle(r.id, d)} className="w-7 h-7 rounded-md text-xs font-bold" style={{ background: bg, color: col }}>{sym}</button></td>);
-                  })}
-                </tr>
-              );
-            })}
-            {riders.length === 0 && <tr><td colSpan={days.length + 1} className="py-6 text-center text-slate-400">{tr("لا نتائج")}</td></tr>}
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="py-3 px-3 font-semibold text-slate-800">{r.name}</td>
+                <td className="px-3 text-slate-500" dir="ltr">{r.companyId || "—"}</td>
+                <td className="px-3 text-slate-600" dir="ltr">{r.phone}</td>
+                <td className="px-3 text-slate-600">{r.area || "—"}</td>
+                <td className="px-3 text-slate-600">{r.type === "Freelancer" ? "Freelancer" : "Full Time"}</td>
+                <td className="px-3">
+                  <button onClick={() => toggle(r.id)} disabled={hasFile} className="font-semibold text-xs px-2 py-1 rounded-lg" style={{ background: r.present ? "#0f9d5822" : "#c0341d22", color: r.present ? "#0f9d58" : "#c0341d", cursor: hasFile ? "default" : "pointer" }}>
+                    {r.present ? t("حاضر ✓", "Present ✓") : t("غايب ✗", "Absent ✗")}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-slate-400">{tr("لا نتائج")}</td></tr>}
           </tbody>
         </table>
       </div>
     </Card>
   );
 }
-
 function ReportsScoped({ db, company }) {
   const [type, setType] = useState("cod");
   const types = { cod: tr("تقرير COD"), notworked: tr("لم يعملوا / غير نشطين"), freelancer: tr("مستحقات الفريلانسر"), fulltime: tr("رواتب Full Time"), riders: tr("كل المناديب") };
@@ -1516,18 +1539,102 @@ const DAY_CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 const DAY_AR = { SU: "الأحد", MO: "الإثنين", TU: "الثلاثاء", WE: "الأربعاء", TH: "الخميس", FR: "الجمعة", SA: "السبت" };
 const todayCode = () => DAY_CODES[new Date().getDay()];
 
+function ShiftBulkUpload({ company, riders, onApply, onClose }) {
+  const [rows, setRows] = useState([]);
+  const [headers, setHeaders] = useState(null);
+  const [map, setMap] = useState({ key: 0, from: 1, to: 2, off: 3 });
+  const AR2CODE = { "الاحد": "SU", "الأحد": "SU", "الاثنين": "MO", "الإثنين": "MO", "الثلاثاء": "TU", "الاربعاء": "WE", "الأربعاء": "WE", "الخميس": "TH", "الجمعة": "FR", "السبت": "SA", sun: "SU", mon: "MO", tue: "TU", wed: "WE", thu: "TH", fri: "FR", sat: "SA" };
+  const onFile = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    f.arrayBuffer().then((buf) => {
+      const wb = XLSX.read(buf);
+      const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+      const hs = (data[0] || []).map((x) => String(x));
+      setHeaders(hs); setRows(data.slice(1).filter((r) => r.some((c) => c !== "")));
+      const g = (w) => { const i = hs.findIndex((h) => w.some((x) => String(h).toLowerCase().includes(x))); return i >= 0 ? i : 0; };
+      setMap({ key: g(["phone", "هاتف", "name", "اسم", "id", "ايدي"]), from: g(["from", "من", "start", "بداية"]), to: g(["to", "الى", "إلى", "end", "نهاية"]), off: g(["off", "اجازة", "إجازة", "holiday", "عطلة"]) });
+    });
+  };
+  const parseOff = (s) => String(s || "").split(/[,،\/\|]+|\s{2,}/).map((x) => x.trim()).filter(Boolean).map((x) => AR2CODE[x.toLowerCase()] || AR2CODE[x]).filter(Boolean);
+  const preview = rows.map((r) => {
+    const keyVal = r[map.key];
+    const rider = riders.find((rd) => rd.company === company && (normPhone(rd.phone) === normPhone(keyVal) || rd.name.trim() === String(keyVal).trim() || (rd.companyId && String(rd.companyId).trim() === String(keyVal).trim())));
+    const off = parseOff(r[map.off]);
+    const shiftDays = DAY_CODES.filter((d) => !off.includes(d));
+    return { rider, name: rider ? rider.name : String(keyVal), from: String(r[map.from] || "").trim(), to: String(r[map.to] || "").trim(), shiftDays, off };
+  });
+  const valid = preview.filter((p) => p.rider);
+  const apply = () => { onApply(valid); onClose(); };
+  const downloadTemplate = () => {
+    const header = ["الاسم / Name", "الهاتف / Phone", "من / From", "إلى / To", "أيام الإجازة / Off Days"];
+    const body = riders.filter((r) => r.company === company).map((r) => [r.name, r.phone, "16:00", "01:00", "الجمعة"]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...(body.length ? body : [["أحمد", "9200", "16:00", "01:00", "الجمعة، السبت"]])]);
+    ws["!cols"] = header.map(() => ({ wch: 18 }));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "shifts");
+    XLSX.writeFile(wb, "MrDelivery-Shifts-" + company + ".xlsx");
+  };
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-slate-500">{t("اكتب وقت البداية والنهاية وأيام الإجازة (مثل: الجمعة، السبت). النظام يعتبر باقي الأيام دواماً.", "Enter start/end time and off days (e.g. Friday, Saturday). The rest are working days.")}</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <input type="file" accept=".xlsx,.xls,.csv" onChange={onFile} className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold" />
+        <Btn kind="ghost" onClick={downloadTemplate}><Download size={15} /> {t("تحميل نموذج شفتات", "Download Shifts Template")}</Btn>
+      </div>
+      {headers && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {[["key", t("المطابقة (اسم/رقم/ID)", "Match (name/phone/ID)")], ["from", t("من", "From")], ["to", t("إلى", "To")], ["off", t("أيام الإجازة", "Off Days")]].map(([k, l]) => (
+            <Field key={k} label={l}><select className={inputCls} value={map[k]} onChange={(e) => setMap({ ...map, [k]: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
+          ))}
+        </div>
+      )}
+      {preview.length > 0 && (
+        <div className="border border-slate-200 rounded-xl overflow-hidden">
+          <div className="px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-600">{t("معاينة", "Preview")} · {t("صالح", "Valid")}: {valid.length}/{preview.length}</div>
+          <div className="max-h-64 overflow-auto"><table className="w-full text-xs">
+            <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), t("من", "From"), t("إلى", "To"), t("أيام الدوام", "Working Days"), ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>
+              {preview.slice(0, 200).map((p, i) => (
+                <tr key={i} className="border-b border-slate-50" style={p.rider ? {} : { opacity: 0.5 }}>
+                  <td className="py-1.5 px-2 font-semibold">{p.name}</td>
+                  <td className="px-2" dir="ltr">{p.from || "—"}</td>
+                  <td className="px-2" dir="ltr">{p.to || "—"}</td>
+                  <td className="px-2">{p.shiftDays.map((d) => tr(DAY_AR[d])).join("، ")}</td>
+                  <td className="px-2">{p.rider ? <span style={{ color: "#0f9d58" }}>✓</span> : <span style={{ color: "#c0341d" }}>{tr("غير مسجل")}</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        </div>
+      )}
+      <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={onClose}>{tr("إلغاء")}</Btn><Btn onClick={apply}>{t("تطبيق على", "Apply to")} {valid.length}</Btn></div>
+    </div>
+  );
+}
+
 function ShiftsWindow({ db, save, company = null }) {
   const [q, setQ] = useState("");
   const [cf, setCf] = useState("all");
+  const [typeF, setTypeF] = useState("all");
+  const [areaF, setAreaF] = useState("all");
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const tc = todayCode();
   const workedToday = (rid) => db.imports.some((im) => im.date === todayStr() && im.results.some((r) => r.riderId === rid && r.matched));
   const inScope = (r) => (company ? r.company === company : (cf === "all" || r.company === cf));
-  const list = db.riders.filter((r) => inScope(r) && (r.name.includes(q) || r.phone.includes(q)));
+  const areas = Array.from(new Set(db.riders.filter((r) => (company ? r.company === company : true)).map((r) => r.area).filter(Boolean))).sort();
+  const list = db.riders.filter((r) => inScope(r)
+    && (r.name.includes(q) || (r.phone || "").includes(q) || (r.companyId || "").includes(q))
+    && (typeF === "all" || r.type === typeF)
+    && (areaF === "all" || (r.area || "") === areaF));
   const roster = db.riders.filter((r) => r.status === "Active" && (company ? r.company === company : true) && (r.shiftDays || []).includes(tc)).sort((a, b) => (a.shiftStart || "").localeCompare(b.shiftStart || ""));
   const openEdit = (r) => setEditing({ ...r, shiftDays: r.shiftDays || [], shiftStart: r.shiftStart || "", shiftEnd: r.shiftEnd || "" });
   const toggleDay = (d) => setEditing((e) => ({ ...e, shiftDays: e.shiftDays.includes(d) ? e.shiftDays.filter((x) => x !== d) : [...e.shiftDays, d] }));
   const saveShift = () => { const riders = db.riders.map((x) => (x.id === editing.id ? editing : x)); save({ ...db, riders }); setEditing(null); };
+  const applyBulkShifts = (items) => {
+    const byId = {}; items.forEach((p) => { byId[p.rider.id] = p; });
+    const riders = db.riders.map((r) => (byId[r.id] ? { ...r, shiftStart: byId[r.id].from, shiftEnd: byId[r.id].to, shiftDays: byId[r.id].shiftDays } : r));
+    save({ ...db, riders });
+  };
   return (
     <div className="space-y-5">
       {!company && (<div className="flex items-center gap-2 pb-1">
@@ -1558,9 +1665,13 @@ function ShiftsWindow({ db, save, company = null }) {
       <Card className="p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
           <h3 className="font-bold text-slate-800">{tr("تعيين الشفتات")}</h3>
-          <div className="flex gap-2">
-            {!company && <select className={inputCls + " w-36"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">{tr("كل الشركات")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>}
-            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-48" placeholder={tr("بحث...")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <div className="flex gap-2 flex-wrap items-center">
+            <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((r) => ({ المندوب: r.name, الهاتف: r.phone, ID: r.companyId || "", المنطقة: r.area || "", النوع: r.type, من: r.shiftStart || "", الى: r.shiftEnd || "", أيام_الدوام: (r.shiftDays || []).map((d) => DAY_AR[d]).join("، "), البنك: r.bankName || "", الحساب: r.bank || "" })), "Shifts_" + (company || "All"))}><Download size={14} /> Excel</Btn>
+            {!company && <select className={inputCls + " w-32"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">{tr("كل الشركات")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>}
+            <select className={inputCls + " w-28"} value={typeF} onChange={(e) => setTypeF(e.target.value)}><option value="all">{t("كل الأنواع", "All Types")}</option><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select>
+            <select className={inputCls + " w-32"} value={areaF} onChange={(e) => setAreaF(e.target.value)}><option value="all">{tr("كل المناطق")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
+            <Btn kind="dark" onClick={() => setBulkOpen(true)}><Upload size={15} /> {t("رفع شفتات", "Bulk Shifts")}</Btn>
+            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-44" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           </div>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
