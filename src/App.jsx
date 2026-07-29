@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Truck, Wallet, FileBarChart, LogOut, Plus, Pencil,
   Search, Upload, CheckCircle2, XCircle, AlertTriangle, Banknote, Download,
   Printer, Eye, Menu, X, CircleUserRound, ShieldCheck, RefreshCw, Bike,
-  CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin, Settings, Globe, Trash2
+  CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin, Settings, Globe, Trash2, UserPlus
 } from "lucide-react";
 
 /* ============================================================
@@ -401,6 +401,8 @@ function normalizeDB(db) {
     employees: db.employees || [],
     staff: db.staff || {},
     archive: db.archive || [],
+    registrations: db.registrations || [],
+    regStaff: db.regStaff && db.regStaff.length ? db.regStaff : ["أميرة", "منال", "أسامة", "محمد"],
   };
 }
 
@@ -1952,6 +1954,165 @@ function ArchiveWindow({ db, save }) {
   );
 }
 
+function RegistrationModule({ db, save }) {
+  const regs = db.registrations || [];
+  const staff = db.regStaff && db.regStaff.length ? db.regStaff : ["أميرة", "منال", "أسامة", "محمد"];
+  const [sel, setSel] = useState(null);
+  const [q, setQ] = useState("");
+  const [statusF, setStatusF] = useState("all");
+  const [assigneeF, setAssigneeF] = useState("all");
+  const [dateF, setDateF] = useState("");
+  const [newStaff, setNewStaff] = useState("");
+  const [manageOpen, setManageOpen] = useState(false);
+
+  const upd = (id, patch) => save({ ...db, registrations: regs.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
+  const toggleStep = (r, key) => upd(r.id, { steps: { ...(r.steps || {}), [key]: !(r.steps && r.steps[key]) } });
+  const reassign = (r, who) => upd(r.id, { assignee: who });
+  const delReg = (r) => { if (window.confirm(t("حذف هذا الطلب نهائياً؟", "Delete this request permanently?"))) { save({ ...db, registrations: regs.filter((x) => x.id !== r.id) }); setSel(null); } };
+  const convert = (r) => {
+    if (!regStepsDone(r)) return;
+    const rider = {
+      id: uid(), name: r.fullName, phone: r.phone, companyId: r.driverId || "", civil: r.idNumber || "", area: r.wilaya || "",
+      commission: "", company: r.company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "",
+      status: "Active", bank: "", bankName: "", swift: "", nationality: r.nationality || "", vehicleType: r.vehicleType || "",
+      notes: r.notes || "", username: r.username || r.phone, password: r.password || "1234", lastWorked: null,
+    };
+    save({ ...db, riders: [...db.riders, rider], registrations: regs.map((x) => (x.id === r.id ? { ...x, converted: true, convertedAt: todayStr() } : x)) });
+    setSel(null);
+  };
+  const addStaff = () => { const n = newStaff.trim(); if (n && !staff.includes(n)) { save({ ...db, regStaff: [...staff, n] }); setNewStaff(""); } };
+  const removeStaff = (n) => save({ ...db, regStaff: staff.filter((x) => x !== n) });
+
+  const counts = { total: regs.length, new: 0, in_progress: 0, docs_missing: 0, await_training: 0, ready: 0, completed: 0 };
+  regs.forEach((r) => { counts[regStatus(r)]++; });
+  const perStaff = {}; staff.forEach((s) => { perStaff[s] = regs.filter((r) => r.assignee === s && !r.converted).length; });
+
+  const rows = regs.filter((r) => (
+    (r.fullName.includes(q) || (r.phone || "").includes(q) || (r.idNumber || "").includes(q)) &&
+    (statusF === "all" || regStatus(r) === statusF) &&
+    (assigneeF === "all" || r.assignee === assigneeF) &&
+    (!dateF || r.createdAt === dateF)
+  )).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+  const StatCard = ({ label, value, color }) => (
+    <div className="bg-white rounded-xl border border-slate-100 p-3">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="font-extrabold text-2xl mt-1" style={{ color: color || "#0C1B33" }}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.orange }}><UserCog size={18} color="#fff" /></span><h2 className="font-extrabold text-lg text-slate-800">{t("تسجيل واعتماد المناديب", "Driver Registration")}</h2></div>
+        <div className="flex items-center gap-2">
+          <a href="#/register" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }}>{t("رابط نموذج التسجيل ↗", "Registration form link ↗")}</a>
+          <Btn kind="ghost" onClick={() => setManageOpen(true)}><UserCog size={15} /> {t("موظفو التوزيع", "Assignees")}</Btn>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+        <StatCard label={t("إجمالي الطلبات", "Total")} value={counts.total} />
+        <StatCard label={t("جديدة", "New")} value={counts.new} color={REG_STATUS_COLOR.new} />
+        <StatCard label={t("قيد المتابعة", "In progress")} value={counts.in_progress} color={REG_STATUS_COLOR.in_progress} />
+        <StatCard label={t("ناقص مستندات", "Docs missing")} value={counts.docs_missing} color={REG_STATUS_COLOR.docs_missing} />
+        <StatCard label={t("بانتظار التدريب", "Awaiting training")} value={counts.await_training} color={REG_STATUS_COLOR.await_training} />
+        <StatCard label={t("جاهزة للتحويل", "Ready")} value={counts.ready} color={REG_STATUS_COLOR.ready} />
+        <StatCard label={t("تم تسجيلهم", "Registered")} value={counts.completed} color={REG_STATUS_COLOR.completed} />
+      </div>
+
+      <Card className="p-4">
+        <h3 className="font-bold text-slate-800 text-sm mb-2">{t("عدد الطلبات لكل موظف", "Requests per assignee")}</h3>
+        <div className="flex flex-wrap gap-2">{staff.map((s) => <span key={s} className="text-sm px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-100"><b>{s}</b>: {perStaff[s] || 0}</span>)}</div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="grid md:grid-cols-5 gap-2 mb-4">
+          <Field label={t("بحث", "Search")}><input className={inputCls} placeholder={t("اسم / هاتف / بطاقة", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></Field>
+          <Field label={t("الحالة", "Status")}><select className={inputCls} value={statusF} onChange={(e) => setStatusF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{Object.keys(REG_STATUS_LABEL).map((k) => <option key={k} value={k}>{t(REG_STATUS_LABEL[k][0], REG_STATUS_LABEL[k][1])}</option>)}</select></Field>
+          <Field label={t("الموظف", "Assignee")}><select className={inputCls} value={assigneeF} onChange={(e) => setAssigneeF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{staff.map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
+          <Field label={t("تاريخ التسجيل", "Date")}><input type="date" className={inputCls} value={dateF} onChange={(e) => setDateF(e.target.value)} /></Field>
+          <div className="flex items-end">{(q || statusF !== "all" || assigneeF !== "all" || dateF) && <Btn kind="ghost" onClick={() => { setQ(""); setStatusF("all"); setAssigneeF("all"); setDateF(""); }}>{t("مسح الفلاتر", "Clear")}</Btn>}</div>
+        </div>
+        <div className="overflow-x-auto"><table className="w-full text-sm">
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("المندوب", "Driver"), t("الهاتف", "Phone"), t("البطاقة", "ID"), t("الموظف", "Assignee"), t("الحالة", "Status"), t("التقدّم", "Progress"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.map((r) => { const st = regStatus(r); return (
+              <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="py-3 px-3 font-semibold text-slate-800">{r.fullName}</td>
+                <td className="px-3 text-slate-600" dir="ltr">{r.phone}</td>
+                <td className="px-3 text-slate-500" dir="ltr">{r.idNumber || "—"}</td>
+                <td className="px-3 text-slate-600">{r.assignee}</td>
+                <td className="px-3"><Pill color={REG_STATUS_COLOR[st]}>{t(REG_STATUS_LABEL[st][0], REG_STATUS_LABEL[st][1])}</Pill></td>
+                <td className="px-3 text-xs text-slate-500">{regStepCount(r)}/{REG_STEPS.length}</td>
+                <td className="px-3"><button onClick={() => setSel(r)} className="text-xs font-semibold" style={{ color: BRAND.blue }}>{t("متابعة", "Open")}</button></td>
+              </tr>
+            ); })}
+            {rows.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">{t("لا توجد طلبات", "No requests")}</td></tr>}
+          </tbody>
+        </table></div>
+      </Card>
+
+      <Modal open={!!sel} onClose={() => setSel(null)} title={sel ? sel.fullName : ""} wide>
+        {sel && (() => { const r = regs.find((x) => x.id === sel.id) || sel; const st = regStatus(r); return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+              <div><span className="text-slate-400 text-xs">{t("الهاتف", "Phone")}</span><div dir="ltr">{r.phone}</div></div>
+              <div><span className="text-slate-400 text-xs">{t("البريد", "Email")}</span><div dir="ltr">{r.email || "—"}</div></div>
+              <div><span className="text-slate-400 text-xs">{t("الجنسية", "Nationality")}</span><div>{r.nationality || "—"}</div></div>
+              <div><span className="text-slate-400 text-xs">{t("البطاقة/الجواز", "ID/Passport")}</span><div dir="ltr">{r.idNumber || "—"}</div></div>
+              <div><span className="text-slate-400 text-xs">{t("الولاية", "Wilaya")}</span><div>{r.wilaya || "—"}</div></div>
+              <div><span className="text-slate-400 text-xs">{t("المركبة", "Vehicle")}</span><div>{r.vehicleType || "—"}</div></div>
+              <div><span className="text-slate-400 text-xs">{t("رخصة قيادة", "License")}</span><div>{r.hasLicense ? t("نعم", "Yes") : t("لا", "No")}</div></div>
+              <div><span className="text-slate-400 text-xs">{t("الشركة", "Company")}</span><div>{r.company ? cLabel(r.company) : "—"}</div></div>
+              <div><span className="text-slate-400 text-xs">{t("تاريخ الطلب", "Date")}</span><div dir="ltr">{r.createdAt}</div></div>
+            </div>
+            {r.notes && <div className="text-sm bg-slate-50 rounded-lg p-3"><span className="text-slate-400 text-xs">{t("ملاحظات", "Notes")}</span><div>{r.notes}</div></div>}
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">{t("الموظف المسؤول:", "Assignee:")}</span>
+              <select className="rounded-lg border border-slate-300 px-2 py-1 text-sm" value={r.assignee} onChange={(e) => reassign(r, e.target.value)}>{staff.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+            </div>
+
+            <div className="border border-slate-200 rounded-xl p-3">
+              <h4 className="font-bold text-sm text-slate-700 mb-2">{t("خطوات الاعتماد", "Approval Workflow")}</h4>
+              <div className="space-y-1">
+                {REG_STEPS.map((s) => { const on = r.steps && r.steps[s.key]; return (
+                  <button key={s.key} onClick={() => toggleStep(r, s.key)} className="w-full flex items-center gap-2 text-right p-2 rounded-lg hover:bg-slate-50">
+                    <span className="w-5 h-5 rounded-md flex items-center justify-center text-xs" style={{ background: on ? "#0f9d58" : "#e2e8f0", color: on ? "#fff" : "#94a3b8" }}>{on ? "✓" : ""}</span>
+                    <span className={"text-sm " + (on ? "text-slate-800 font-semibold" : "text-slate-500")}>{t(s.ar, s.en)}</span>
+                  </button>
+                ); })}
+              </div>
+              <div className="grid md:grid-cols-3 gap-2 mt-3">
+                <Field label="Username"><input className={inputCls} dir="ltr" value={r.username || ""} onChange={(e) => upd(r.id, { username: e.target.value })} /></Field>
+                <Field label="Password"><input className={inputCls} dir="ltr" value={r.password || ""} onChange={(e) => upd(r.id, { password: e.target.value })} /></Field>
+                <Field label="Driver ID"><input className={inputCls} dir="ltr" value={r.driverId || ""} onChange={(e) => upd(r.id, { driverId: e.target.value })} /></Field>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <button onClick={() => delReg(r)} className="text-xs font-semibold text-red-600">{t("حذف الطلب", "Delete request")}</button>
+              {r.converted
+                ? <Pill color="#0f9d58">{t("تم التحويل إلى مندوب ✓", "Converted to driver ✓")}</Pill>
+                : <Btn kind={regStepsDone(r) ? "success" : "ghost"} onClick={() => convert(r)} disabled={!regStepsDone(r)}><CheckCircle2 size={16} /> Convert to Driver</Btn>}
+            </div>
+            {!r.converted && !regStepsDone(r) && <p className="text-xs text-slate-400 text-left">{t("أكمل جميع الخطوات لتفعيل التحويل.", "Complete all steps to enable conversion.")}</p>}
+          </div>
+        ); })()}
+      </Modal>
+
+      <Modal open={manageOpen} onClose={() => setManageOpen(false)} title={t("موظفو التوزيع التلقائي", "Auto-assign Staff")}>
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">{t("توزّع طلبات التسجيل بالتساوي على هؤلاء (Round Robin).", "New requests are distributed evenly across these (Round Robin).")}</p>
+          <div className="space-y-1">{staff.map((s) => <div key={s} className="flex items-center justify-between border-b border-slate-50 py-2"><span className="font-semibold text-sm">{s}</span><button onClick={() => removeStaff(s)} className="text-xs text-red-600 font-semibold">{t("إزالة", "Remove")}</button></div>)}</div>
+          <div className="flex gap-2"><input className={inputCls} placeholder={t("اسم الموظف", "Staff name")} value={newStaff} onChange={(e) => setNewStaff(e.target.value)} /><Btn onClick={addStaff}><Plus size={15} /> {t("إضافة", "Add")}</Btn></div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 function sidebarFor(user) {
   if (user.role === "Supervisor") return [{ key: "company:" + user.company, label: cLabel(user.company), kind: "company", company: user.company }];
   const items = [{ key: "dashboard", label: t("اللوحة العامة", "Dashboard"), kind: "dashboard" }];
@@ -1959,13 +2120,94 @@ function sidebarFor(user) {
   if (user.role === "Admin" || user.role === "Operations Manager") {
     items.push({ key: "shifts", label: t("الشفتات (كل الشركات)", "Shifts (All)"), kind: "shifts" });
     items.push({ key: "employees", label: t("الموظفون", "Employees"), kind: "employees" });
+    items.push({ key: "registration", label: t("تسجيل المناديب", "Registration"), kind: "registration" });
     items.push({ key: "archive", label: t("الأرشيف", "Archive"), kind: "archive" });
     items.push({ key: "allriders", label: t("كل المناديب", "All Riders"), kind: "allriders" });
     items.push({ key: "reports", label: t("تقارير عامة", "Reports"), kind: "reports" });
   }
   return items;
 }
-const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, archive: Trash2 };
+const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, archive: Trash2 };
+
+const REG_STEPS = [
+  { key: "contacted", ar: "تم التواصل مع المندوب", en: "Contacted" },
+  { key: "docs_received", ar: "تم استلام جميع المستندات", en: "Documents received" },
+  { key: "docs_reviewed", ar: "تم مراجعة المستندات", en: "Documents reviewed" },
+  { key: "training", ar: "تم إكمال التدريب", en: "Training completed" },
+  { key: "username", ar: "تم إنشاء Username", en: "Username created" },
+  { key: "password", ar: "تم إنشاء Password", en: "Password created" },
+  { key: "driver_id", ar: "تم إصدار Driver ID", en: "Driver ID issued" },
+  { key: "creds_delivered", ar: "تم تسليم بيانات الدخول للمندوب", en: "Credentials delivered" },
+  { key: "ready", ar: "جاهز للتسجيل النهائي", en: "Ready for final registration" },
+];
+const VEHICLES = [["motorcycle", "دراجة نارية", "Motorcycle"], ["car", "سيارة", "Car"], ["bicycle", "دراجة هوائية", "Bicycle"], ["truck", "شاحنة صغيرة", "Pickup"]];
+const regStepsDone = (r) => REG_STEPS.every((s) => r.steps && r.steps[s.key]);
+const regStepCount = (r) => REG_STEPS.filter((s) => r.steps && r.steps[s.key]).length;
+const regStatus = (r) => {
+  if (r.converted) return "completed";
+  if (regStepsDone(r)) return "ready";
+  if (r.steps && r.steps.docs_reviewed && !r.steps.training) return "await_training";
+  if (r.steps && r.steps.contacted && !r.steps.docs_received) return "docs_missing";
+  if (regStepCount(r) > 0) return "in_progress";
+  return "new";
+};
+const REG_STATUS_LABEL = { new: ["جديد", "New"], in_progress: ["قيد المتابعة", "In progress"], docs_missing: ["ناقص مستندات", "Docs missing"], await_training: ["بانتظار التدريب", "Awaiting training"], ready: ["جاهز للتحويل", "Ready to convert"], completed: ["تم التسجيل", "Registered"] };
+const REG_STATUS_COLOR = { new: "#6b7280", in_progress: BRAND.blue, docs_missing: "#d97706", await_training: "#7c3aed", ready: "#0f9d58", completed: "#0C1B33" };
+
+function RegistrationForm({ onToggleLang }) {
+  const blank = { fullName: "", phone: "", email: "", nationality: "", idNumber: "", wilaya: "", company: "", vehicleType: "motorcycle", hasLicense: "yes", notes: "" };
+  const [f, setF] = useState(blank);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const submit = () => {
+    if (!f.fullName.trim() || !f.phone.trim()) return setErr(t("الاسم ورقم الهاتف مطلوبان", "Name and phone are required"));
+    setBusy(true); setErr("");
+    supabase.functions.invoke("submit-registration", { body: { ...f, hasLicense: f.hasLicense === "yes" } }).then(({ data, error }) => {
+      setBusy(false);
+      if (error || (data && data.error)) return setErr((data && data.error) ? String(data.error) : t("تعذّر الإرسال، حاول مرة أخرى", "Submission failed, try again"));
+      setDone(true);
+    });
+  };
+  return (
+    <div dir={dirOf()} className="min-h-screen bg-slate-50 flex items-center justify-center p-4" style={{ fontFamily: "'Tajawal', sans-serif" }}>
+      <div className="w-full max-w-lg">
+        <div className="flex items-center justify-between mb-4">
+          <img src={LOGO_FULL} alt="Mr. Delivery" className="h-10" />
+          <button onClick={onToggleLang} className="text-xs font-semibold text-slate-500 flex items-center gap-1"><Globe size={14} /> {LANG === "en" ? "ع" : "EN"}</button>
+        </div>
+        {done ? (
+          <Card className="p-8 text-center">
+            <div className="text-5xl mb-3">✅</div>
+            <h2 className="font-extrabold text-xl text-slate-800 mb-2">{t("تم استلام طلبك بنجاح", "Your request was received")}</h2>
+            <p className="text-sm text-slate-500">{t("سيتواصل معك فريقنا قريباً لإكمال إجراءات التسجيل.", "Our team will contact you soon to complete the registration.")}</p>
+          </Card>
+        ) : (
+          <Card className="p-6">
+            <h2 className="font-extrabold text-lg text-slate-800 mb-1">{t("تسجيل مندوب جديد", "New Driver Registration")}</h2>
+            <p className="text-xs text-slate-500 mb-5">{t("عبّئ بياناتك وسيتواصل معك الفريق.", "Fill in your details and our team will reach out.")}</p>
+            <div className="grid md:grid-cols-2 gap-4">
+              <Field label={t("الاسم الكامل", "Full Name")}><input className={inputCls} value={f.fullName} onChange={set("fullName")} /></Field>
+              <Field label={t("رقم الهاتف", "Phone")}><input className={inputCls} dir="ltr" value={f.phone} onChange={set("phone")} /></Field>
+              <Field label={t("البريد الإلكتروني (اختياري)", "Email (optional)")}><input className={inputCls} dir="ltr" value={f.email} onChange={set("email")} /></Field>
+              <Field label={t("الجنسية", "Nationality")}><input className={inputCls} value={f.nationality} onChange={set("nationality")} /></Field>
+              <Field label={t("رقم البطاقة / الجواز", "ID / Passport No.")}><input className={inputCls} dir="ltr" value={f.idNumber} onChange={set("idNumber")} /></Field>
+              <Field label={t("الولاية", "Wilaya / State")}><input className={inputCls} value={f.wilaya} onChange={set("wilaya")} /></Field>
+              <Field label={t("الشركة المطلوبة", "Preferred Company")}><select className={inputCls} value={f.company} onChange={set("company")}><option value="">{t("— اختياري —", "— optional —")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
+              <Field label={t("نوع المركبة", "Vehicle Type")}><select className={inputCls} value={f.vehicleType} onChange={set("vehicleType")}>{VEHICLES.map(([v, ar, en]) => <option key={v} value={v}>{t(ar, en)}</option>)}</select></Field>
+              <Field label={t("هل لديك رخصة قيادة؟", "Do you have a driving license?")}><select className={inputCls} value={f.hasLicense} onChange={set("hasLicense")}><option value="yes">{t("نعم", "Yes")}</option><option value="no">{t("لا", "No")}</option></select></Field>
+            </div>
+            <div className="mt-4"><Field label={t("ملاحظات (اختياري)", "Notes (optional)")}><textarea className={inputCls} rows={2} value={f.notes} onChange={set("notes")} /></Field></div>
+            {err && <p className="text-xs text-red-600 mt-3">{err}</p>}
+            <div className="mt-5"><Btn onClick={submit} className="w-full justify-center">{busy ? "..." : t("إرسال الطلب", "Submit Request")}</Btn></div>
+          </Card>
+        )}
+        <p className="text-center text-[11px] text-slate-400 mt-4">Mr. Delivery · {new Date().getFullYear()}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [session, setSession] = useState(undefined);
@@ -2062,6 +2304,7 @@ export default function App() {
     );
   }
 
+  if (typeof window !== "undefined" && (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().startsWith("register")) return <RegistrationForm onToggleLang={toggleLang} />;
   if (session === undefined) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
   if (!session) return <Login onToggleLang={toggleLang} onRider={(view, creds) => { try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {} setRider({ view: normalizeDB(view), creds }); }} />;
   if (!staff || !db) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
@@ -2080,6 +2323,7 @@ export default function App() {
     if (activeItem.kind === "allriders") return <Riders db={db} save={save} company={null} user={user} />;
     if (activeItem.kind === "shifts") return <ShiftsWindow db={db} save={save} />;
     if (activeItem.kind === "employees") return <Employees db={db} save={save} />;
+    if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} />;
     if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
     if (activeItem.kind === "reports") return <ReportsScoped db={db} company={null} />;
     return null;
