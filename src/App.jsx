@@ -1620,6 +1620,17 @@ function ShiftsWindow({ db, save, company = null }) {
   const [editing, setEditing] = useState(null);
   const tc = todayCode();
   const workedToday = (rid) => db.imports.some((im) => im.date === todayStr() && im.results.some((r) => r.riderId === rid && r.matched));
+  const toggleStart = (rid) => {
+    if (workedToday(rid)) return;
+    const key = rid + ":" + todayStr(); const att = { ...db.attendance };
+    if (att[key]) delete att[key]; else att[key] = true;
+    save({ ...db, attendance: att });
+  };
+  const markAllStarted = () => {
+    const att = { ...db.attendance };
+    roster.forEach((r) => { att[r.id + ":" + todayStr()] = true; });
+    save({ ...db, attendance: att });
+  };
   const inScope = (r) => (company ? r.company === company : (cf === "all" || r.company === cf));
   const areas = Array.from(new Set(db.riders.filter((r) => (company ? r.company === company : true)).map((r) => r.area).filter(Boolean))).sort();
   const list = db.riders.filter((r) => inScope(r)
@@ -1643,18 +1654,28 @@ function ShiftsWindow({ db, save, company = null }) {
       </div>)}
 
       <Card className="p-5">
-        <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><CalendarCheck size={18} color={BRAND.orange} /> {tr("روستر اليوم")} ({tr(DAY_AR[tc])})</h3>
+        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+          <h3 className="font-bold text-slate-800 flex items-center gap-2"><CalendarCheck size={18} color={BRAND.orange} /> {tr("روستر اليوم")} ({tr(DAY_AR[tc])})</h3>
+          {roster.length > 0 && <Btn size="sm" kind="success" onClick={markAllStarted}><CheckCircle2 size={14} /> {t("تحديد الكل: بدأ", "Mark all: Started")}</Btn>}
+        </div>
         <p className="text-xs text-slate-500 mb-4">{tr("المناديب المتوقّع دوامهم اليوم مرتّبين حسب وقت الشفت — تواصل معهم قبل البداية للتأكد من الحضور.")}</p>
         {roster.length === 0 ? <p className="text-sm text-slate-400">{tr("لا توجد شفتات مسجّلة لليوم. عيّن الشفتات من الجدول بالأسفل.")}</p> : (
           <div className="space-y-2">
             {roster.map((r) => {
-              const started = workedToday(r.id);
+              const fromFile = workedToday(r.id);
+              const started = fromFile || !!db.attendance[r.id + ":" + todayStr()];
               return (
                 <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-100">
                   <div className="w-16 text-center"><div className="font-extrabold text-slate-800">{r.shiftStart || "—"}</div><div className="text-[10px] text-slate-400">{r.shiftEnd ? tr("حتى ") + r.shiftEnd : ""}</div></div>
                   <div className="flex-1"><div className="font-semibold text-slate-800">{r.name} {companyPill(r.company)}</div><div className="text-xs text-slate-500" dir="ltr">{r.phone}</div></div>
-                  {started ? <Pill color="#0f9d58">{tr("بدأ الشفت ✓")}</Pill> :
-                    <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "#fff1ee", color: "#c0341d" }}><Phone size={13} /> {tr("لم يبدأ — اتصل")}</a>}
+                  {started ? (
+                    <button onClick={() => toggleStart(r.id)} disabled={fromFile} title={fromFile ? t("مؤكّد من شيت الطلبات", "confirmed by orders sheet") : t("اضغط للتراجع", "click to undo")} className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "#0f9d5822", color: "#0f9d58", cursor: fromFile ? "default" : "pointer" }}><CheckCircle2 size={13} /> {tr("بدأ الشفت ✓")}</button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: "#fff1ee", color: "#c0341d" }}><Phone size={13} /> {tr("لم يبدأ — اتصل")}</a>
+                      <Btn size="sm" onClick={() => toggleStart(r.id)}>{t("تحديد بدأ", "Mark Started")}</Btn>
+                    </div>
+                  )}
                 </div>
               );
             })}
