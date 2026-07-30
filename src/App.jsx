@@ -2057,8 +2057,8 @@ function RegistrationModule({ db, save, user }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.orange }}><UserCog size={18} color="#fff" /></span><h2 className="font-extrabold text-lg text-slate-800">{t("تسجيل واعتماد المناديب", "Driver Registration")}</h2></div>
-        <div className="flex items-center gap-2">
-          <a href="#/register" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }}>{t("رابط نموذج التسجيل ↗", "Registration form link ↗")}</a>
+        <div className="flex items-center gap-2 flex-wrap">
+          {COMPANIES.map((c) => <a key={c} href={"#/register/" + REG_LINK_FOR[c]} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: CMETA[c].color + "18", color: CMETA[c].color }}>{cLabel(c)} ↗</a>)}
           {isManager && <Btn kind="ghost" onClick={() => setManageOpen(true)}><UserCog size={15} /> {t("موظفو التوزيع", "Assignees")}</Btn>}
         </div>
       </div>
@@ -2233,6 +2233,8 @@ function sidebarFor(user) {
 }
 const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, areas: MapPin, archive: Trash2 };
 
+const REG_LINK_FOR = { "Snoonu": "snoonu-tDKVbKhZ", "Talabat": "talabat-BhM5lYFt", "Aramex": "aramex-f_i83gxJ" };
+const REG_LINKS = { "snoonu-tDKVbKhZ": "Snoonu", "talabat-BhM5lYFt": "Talabat", "aramex-f_i83gxJ": "Aramex" };
 const REG_STEPS = [
   { key: "contacted", ar: "تم التواصل مع المندوب", en: "Contacted" },
   { key: "docs_received", ar: "تم استلام جميع المستندات", en: "Documents received" },
@@ -2259,8 +2261,23 @@ const regStatus = (r) => {
 const REG_STATUS_LABEL = { new: ["جديد", "New"], in_progress: ["قيد المتابعة", "In progress"], docs_missing: ["ناقص مستندات", "Docs missing"], await_training: ["بانتظار التدريب", "Awaiting training"], ready: ["جاهز للتحويل", "Ready to convert"], completed: ["تم التسجيل", "Registered"], rejected: ["مرفوض", "Rejected"] };
 const REG_STATUS_COLOR = { new: "#6b7280", in_progress: BRAND.blue, docs_missing: "#d97706", await_training: "#7c3aed", ready: "#0f9d58", completed: "#0C1B33", rejected: "#c0341d" };
 
-function RegistrationForm({ onToggleLang }) {
-  const blank = { fullName: "", phone: "", email: "", nationality: "", idNumber: "", wilaya: "", company: "", vehicleType: "motorcycle", hasLicense: "yes", bankName: "", bank: "", swift: "", notes: "" };
+function RegInvalid({ onToggleLang }) {
+  return (
+    <div dir={dirOf()} className="min-h-screen bg-slate-50 flex items-center justify-center p-4" style={{ fontFamily: "'Tajawal', sans-serif" }}>
+      <div className="w-full max-w-md text-center">
+        <img src={LOGO_FULL} alt="Mr. Delivery" className="h-10 mx-auto mb-6" />
+        <Card className="p-8">
+          <div className="text-5xl mb-3">🔗</div>
+          <h2 className="font-extrabold text-lg text-slate-800 mb-2">{t("رابط غير صالح", "Invalid link")}</h2>
+          <p className="text-sm text-slate-500">{t("رابط التسجيل غير صحيح أو غير مكتمل. الرجاء استخدام الرابط الرسمي الذي وصلك من الشركة.", "The registration link is incorrect or incomplete. Please use the official link provided by the company.")}</p>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function RegistrationForm({ onToggleLang, lockedCompany }) {
+  const blank = { fullName: "", phone: "", email: "", nationality: "", idNumber: "", wilaya: "", company: lockedCompany || "", vehicleType: "motorcycle", hasLicense: "yes", bankName: "", bank: "", swift: "", notes: "" };
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -2293,7 +2310,7 @@ function RegistrationForm({ onToggleLang }) {
           </Card>
         ) : (
           <Card className="p-6">
-            <h2 className="font-extrabold text-lg text-slate-800 mb-1">{t("تسجيل مندوب جديد", "New Driver Registration")}</h2>
+            <h2 className="font-extrabold text-lg text-slate-800 mb-1">{t("تسجيل مندوب جديد", "New Driver Registration")}{lockedCompany ? " — " + cLabel(lockedCompany) : ""}</h2>
             <p className="text-xs text-slate-500 mb-5">{t("عبّئ بياناتك وسيتواصل معك الفريق.", "Fill in your details and our team will reach out.")}</p>
             <div className="grid md:grid-cols-2 gap-4">
               <Field label={t("الاسم الكامل", "Full Name")}><input className={inputCls} value={f.fullName} onChange={set("fullName")} /></Field>
@@ -2304,7 +2321,9 @@ function RegistrationForm({ onToggleLang }) {
               <Field label={t("الولاية / المنطقة", "Wilaya / Area")}>{areas.length > 0
                 ? <select className={inputCls} value={f.wilaya} onChange={set("wilaya")}><option value="">{t("— اختر —", "— select —")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
                 : <input className={inputCls} value={f.wilaya} onChange={set("wilaya")} />}</Field>
-              <Field label={t("الشركة المطلوبة", "Preferred Company")}><select className={inputCls} value={f.company} onChange={set("company")}><option value="">{t("— اختياري —", "— optional —")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
+              <Field label={t("الشركة", "Company")}>{lockedCompany
+                ? <input className={inputCls} value={cLabel(lockedCompany)} readOnly style={{ background: "#f8fafc", fontWeight: 700 }} />
+                : <select className={inputCls} value={f.company} onChange={set("company")}><option value="">{t("— اختياري —", "— optional —")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>}</Field>
               <Field label={t("نوع المركبة", "Vehicle Type")}><select className={inputCls} value={f.vehicleType} onChange={set("vehicleType")}>{VEHICLES.map(([v, ar, en]) => <option key={v} value={v}>{t(ar, en)}</option>)}</select></Field>
               <Field label={t("هل لديك رخصة قيادة؟", "Do you have a driving license?")}><select className={inputCls} value={f.hasLicense} onChange={set("hasLicense")}><option value="yes">{t("نعم", "Yes")}</option><option value="no">{t("لا", "No")}</option></select></Field>
               <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={f.bankName} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setF({ ...f, bankName: e.target.value, swift: b ? b.swift : "" }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
@@ -2419,7 +2438,13 @@ export default function App() {
     );
   }
 
-  if (typeof window !== "undefined" && (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().startsWith("register")) return <RegistrationForm onToggleLang={toggleLang} />;
+  if (typeof window !== "undefined" && (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().startsWith("register")) {
+    const seg = (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().split("/");
+    const key = seg[1] || "";
+    const lockedCompany = REG_LINKS[key];
+    if (!lockedCompany) return <RegInvalid onToggleLang={toggleLang} />;
+    return <RegistrationForm onToggleLang={toggleLang} lockedCompany={lockedCompany} />;
+  }
   if (session === undefined) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
   if (!session) return <Login onToggleLang={toggleLang} onRider={(view, creds) => { try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {} setRider({ view: normalizeDB(view), creds }); }} />;
   if (!staff || !db) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
