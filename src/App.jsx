@@ -2439,8 +2439,8 @@ export default function App() {
   }
 
   if (typeof window !== "undefined" && (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().startsWith("register")) {
-    const seg = (window.location.hash || "").replace(/^#\/?/, "").toLowerCase().split("/");
-    const key = seg[1] || "";
+    const raw = (window.location.hash || "").replace(/^#\/?/, "").split("/");
+    const key = raw[1] || "";
     const lockedCompany = REG_LINKS[key];
     if (!lockedCompany) return <RegInvalid onToggleLang={toggleLang} />;
     return <RegistrationForm onToggleLang={toggleLang} lockedCompany={lockedCompany} />;
