@@ -403,13 +403,14 @@ function normalizeDB(db) {
     archive: db.archive || [],
     registrations: db.registrations || [],
     regStaff: db.regStaff && db.regStaff.length ? db.regStaff : ["أميرة", "منال", "أسامة", "محمد"],
+    areas: db.areas || [],
   };
 }
 
 /* ---------- storage (promise-based) ---------- */
 const mem = {};
 const APP_ROW_ID = 1;
-const STAFF_FN_SECRET = "mrd_Iq-jEkXJRJ9Rs2R1BMxck2wvt7qC7TaD";
+const STAFF_FN_SECRET = "mrd2026";
 const loadDB = () =>
   supabase.from("app_state").select("data").eq("id", APP_ROW_ID).single()
     .then(({ data }) => normalizeDB(data ? data.data : null))
@@ -1007,7 +1008,7 @@ function Riders({ db, save, company, user }) {
             <Field label={tr("رقم الهاتف")}><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
             <Field label={tr("رقم المدني")}><input className={inputCls} dir="ltr" value={editing.civil || ""} onChange={(e) => setEditing({ ...editing, civil: e.target.value })} /></Field>
             <Field label={t("ID المندوب في الشركة", "Company Rider ID")}><input className={inputCls} dir="ltr" value={editing.companyId || ""} onChange={(e) => setEditing({ ...editing, companyId: e.target.value })} placeholder={t("مُعرّف المندوب من الشركة", "rider id from company")} /></Field>
-            <Field label={tr("المنطقة / المحافظة")}><input className={inputCls} list="mrd-areas" value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value })} placeholder={tr("نزوى / صحار / صلالة...")} /></Field>
+            <Field label={tr("المنطقة / المحافظة")}><select className={inputCls} value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value })}><option value="">{t("— اختر المنطقة —", "— select area —")}</option>{(db.areas || []).map((a) => <option key={a} value={a}>{a}</option>)}{editing.area && !(db.areas || []).includes(editing.area) && <option value={editing.area}>{editing.area}</option>}</select></Field>
             <Field label={t("الكوميشن للطلب (فريلانسر)", "Commission per order (Freelancer)")}><input className={inputCls} dir="ltr" type="number" step="0.001" value={editing.commission || ""} onChange={(e) => setEditing({ ...editing, commission: e.target.value })} placeholder={t("مثال 1.400", "e.g. 1.400")} /></Field>
             <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={editing.bankName || ""} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setEditing({ ...editing, bankName: e.target.value, swift: b ? b.swift : "" }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
             <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} dir="ltr" value={editing.bank} onChange={(e) => setEditing({ ...editing, bank: e.target.value })} /></Field>
@@ -1760,7 +1761,7 @@ function Employees({ db, save }) {
   const candidates = editing ? db.riders.filter((r) => r.company === editing.company && (!editing.area || (r.area || "") === editing.area)) : [];
   const toggleRider = (id) => setEditing((e) => ({ ...e, riderIds: e.riderIds.includes(id) ? e.riderIds.filter((x) => x !== id) : [...e.riderIds, id] }));
 
-  const blankAcc = { email: "", password: "", name: "", role: "Supervisor", company: "Talabat" };
+  const blankAcc = { email: "", password: "", name: "", role: "Supervisor", company: "Talabat", regAgent: false };
   const [showAcc, setShowAcc] = useState(false);
   const [acc, setAcc] = useState(blankAcc);
   const [accMsg, setAccMsg] = useState("");
@@ -1774,7 +1775,7 @@ function Employees({ db, save }) {
       setAccBusy(false);
       if (error || (data && data.error)) return setAccMsg((data && data.error) ? String(data.error) : t("تعذّر إنشاء الحساب — تأكد من نشر الدالة", "Failed to create account — check the function is deployed"));
       const company = acc.role === "Supervisor" ? (acc.company || "Talabat") : null;
-      save({ ...db, staff: { ...(db.staff || {}), [email]: { role: acc.role, name: acc.name || email, company } } });
+      save({ ...db, staff: { ...(db.staff || {}), [email]: { role: acc.role, name: acc.name || email, company, regAgent: !!acc.regAgent } } });
       setAccMsg(t("✅ تم إنشاء الحساب بنجاح", "✅ Account created successfully"));
       setAcc(blankAcc);
     });
@@ -1831,7 +1832,7 @@ function Employees({ db, save }) {
           {accounts.map((a) => (
             <div key={a.email} className="flex items-center justify-between border-b border-slate-50 py-1.5 flex-wrap gap-2">
               <span dir="ltr" className="font-mono text-xs text-slate-700">{a.email}</span>
-              <span className="flex items-center gap-2"><Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}</span>
+              <span className="flex items-center gap-2"><Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}</span>
             </div>
           ))}
         </div>
@@ -1855,6 +1856,7 @@ function Employees({ db, save }) {
               <select className={inputCls} value={acc.company || "Talabat"} onChange={(e) => setAcc({ ...acc, company: e.target.value })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>
             </Field>
           )}
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none"><input type="checkbox" checked={!!acc.regAgent} onChange={(e) => setAcc({ ...acc, regAgent: e.target.checked })} /> {t("مخوّل بمتابعة تسجيل المناديب", "Authorized to follow driver registrations")}</label>
           {accMsg && <p className="text-xs" style={{ color: accMsg.charAt(0) === "✅" ? "#0f9d58" : "#c0341d" }}>{accMsg}</p>}
           <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setShowAcc(false)}>{tr("إغلاق")}</Btn><Btn onClick={createAccount}>{accBusy ? "..." : t("إنشاء الحساب", "Create Account")}</Btn></div>
         </div>
@@ -1866,7 +1868,7 @@ function Employees({ db, save }) {
             <Field label={tr("الاسم")}><input className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
             <Field label={tr("رقم الهاتف")}><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
             <Field label={tr("الشركة المسؤول عنها")}><select className={inputCls} value={editing.company} onChange={(e) => setEditing({ ...editing, company: e.target.value, riderIds: [] })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
-            <Field label={tr("المنطقة / المحافظة")}><input className={inputCls} list="mrd-emp-areas" value={editing.area} onChange={(e) => setEditing({ ...editing, area: e.target.value, riderIds: [] })} placeholder={tr("نزوى / صحار...")} /></Field>
+            <Field label={tr("المنطقة / المحافظة")}><select className={inputCls} value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value, riderIds: [] })}><option value="">{t("— اختر المنطقة —", "— select area —")}</option>{(db.areas || []).map((a) => <option key={a} value={a}>{a}</option>)}{editing.area && !(db.areas || []).includes(editing.area) && <option value={editing.area}>{editing.area}</option>}</select></Field>
             <Field label={tr("نوع المسؤولية")}><select className={inputCls} value={editing.roleType} onChange={(e) => setEditing({ ...editing, roleType: e.target.value })}>{EMP_ROLES.map(([v, l]) => <option key={v} value={v}>{tr(l)}</option>)}</select></Field>
             <Field label={tr("نطاق المسؤولية")}><select className={inputCls} value={editing.scope} onChange={(e) => setEditing({ ...editing, scope: e.target.value })}><option value="all">{tr("كل مناديب المنطقة")}</option><option value="selected">{tr("مناديب محددون")}</option></select></Field>
             {editing.scope === "selected" && (
@@ -1954,15 +1956,21 @@ function ArchiveWindow({ db, save }) {
   );
 }
 
-function RegistrationModule({ db, save }) {
+function RegistrationModule({ db, save, user }) {
   const regs = db.registrations || [];
-  const staff = db.regStaff && db.regStaff.length ? db.regStaff : ["أميرة", "منال", "أسامة", "محمد"];
+  // authorized agents = staff accounts flagged regAgent; fallback to legacy regStaff names
+  const staffAgents = Object.entries(db.staff || {}).filter(([, p]) => p && p.regAgent).map(([email, p]) => ({ id: email, name: p.name || email }));
+  const legacy = (db.regStaff || []).map((n) => ({ id: n, name: n }));
+  const agents = staffAgents.length ? staffAgents : legacy;
+  const agentName = (id) => { const a = agents.find((x) => x.id === id); return a ? a.name : id; };
+  const isManager = user && (user.role === "Admin" || user.role === "Operations Manager");
+  const myId = user ? user.email : null;
+
   const [sel, setSel] = useState(null);
   const [q, setQ] = useState("");
   const [statusF, setStatusF] = useState("all");
   const [assigneeF, setAssigneeF] = useState("all");
   const [dateF, setDateF] = useState("");
-  const [newStaff, setNewStaff] = useState("");
   const [manageOpen, setManageOpen] = useState(false);
 
   const upd = (id, patch) => save({ ...db, registrations: regs.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
@@ -1980,14 +1988,15 @@ function RegistrationModule({ db, save }) {
     save({ ...db, riders: [...db.riders, rider], registrations: regs.map((x) => (x.id === r.id ? { ...x, converted: true, convertedAt: todayStr() } : x)) });
     setSel(null);
   };
-  const addStaff = () => { const n = newStaff.trim(); if (n && !staff.includes(n)) { save({ ...db, regStaff: [...staff, n] }); setNewStaff(""); } };
-  const removeStaff = (n) => save({ ...db, regStaff: staff.filter((x) => x !== n) });
 
-  const counts = { total: regs.length, new: 0, in_progress: 0, docs_missing: 0, await_training: 0, ready: 0, completed: 0 };
-  regs.forEach((r) => { counts[regStatus(r)]++; });
-  const perStaff = {}; staff.forEach((s) => { perStaff[s] = regs.filter((r) => r.assignee === s && !r.converted).length; });
+  // manager sees all; a non-manager agent sees only their own requests
+  const visibleRegs = isManager ? regs : regs.filter((r) => r.assignee === myId || agentName(r.assignee) === (user && user.name));
 
-  const rows = regs.filter((r) => (
+  const counts = { total: visibleRegs.length, new: 0, in_progress: 0, docs_missing: 0, await_training: 0, ready: 0, completed: 0 };
+  visibleRegs.forEach((r) => { counts[regStatus(r)]++; });
+  const perStaff = {}; agents.forEach((s) => { perStaff[s.id] = regs.filter((r) => r.assignee === s.id && !r.converted).length; });
+
+  const rows = visibleRegs.filter((r) => (
     (r.fullName.includes(q) || (r.phone || "").includes(q) || (r.idNumber || "").includes(q)) &&
     (statusF === "all" || regStatus(r) === statusF) &&
     (assigneeF === "all" || r.assignee === assigneeF) &&
@@ -2007,7 +2016,7 @@ function RegistrationModule({ db, save }) {
         <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.orange }}><UserCog size={18} color="#fff" /></span><h2 className="font-extrabold text-lg text-slate-800">{t("تسجيل واعتماد المناديب", "Driver Registration")}</h2></div>
         <div className="flex items-center gap-2">
           <a href="#/register" target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }}>{t("رابط نموذج التسجيل ↗", "Registration form link ↗")}</a>
-          <Btn kind="ghost" onClick={() => setManageOpen(true)}><UserCog size={15} /> {t("موظفو التوزيع", "Assignees")}</Btn>
+          {isManager && <Btn kind="ghost" onClick={() => setManageOpen(true)}><UserCog size={15} /> {t("موظفو التوزيع", "Assignees")}</Btn>}
         </div>
       </div>
 
@@ -2023,14 +2032,14 @@ function RegistrationModule({ db, save }) {
 
       <Card className="p-4">
         <h3 className="font-bold text-slate-800 text-sm mb-2">{t("عدد الطلبات لكل موظف", "Requests per assignee")}</h3>
-        <div className="flex flex-wrap gap-2">{staff.map((s) => <span key={s} className="text-sm px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-100"><b>{s}</b>: {perStaff[s] || 0}</span>)}</div>
+        <div className="flex flex-wrap gap-2">{agents.length === 0 ? <span className="text-sm text-slate-400">{t("لا يوجد موظفون مخوّلون — فعّلهم من نافذة الموظفين", "No authorized agents — enable them from Employees")}</span> : agents.map((s) => <span key={s.id} className="text-sm px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-100"><b>{s.name}</b>: {perStaff[s.id] || 0}</span>)}</div>
       </Card>
 
       <Card className="p-4">
         <div className="grid md:grid-cols-5 gap-2 mb-4">
           <Field label={t("بحث", "Search")}><input className={inputCls} placeholder={t("اسم / هاتف / بطاقة", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></Field>
           <Field label={t("الحالة", "Status")}><select className={inputCls} value={statusF} onChange={(e) => setStatusF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{Object.keys(REG_STATUS_LABEL).map((k) => <option key={k} value={k}>{t(REG_STATUS_LABEL[k][0], REG_STATUS_LABEL[k][1])}</option>)}</select></Field>
-          <Field label={t("الموظف", "Assignee")}><select className={inputCls} value={assigneeF} onChange={(e) => setAssigneeF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{staff.map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
+          <Field label={t("الموظف", "Assignee")}><select className={inputCls} value={assigneeF} onChange={(e) => setAssigneeF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{agents.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           <Field label={t("تاريخ التسجيل", "Date")}><input type="date" className={inputCls} value={dateF} onChange={(e) => setDateF(e.target.value)} /></Field>
           <div className="flex items-end">{(q || statusF !== "all" || assigneeF !== "all" || dateF) && <Btn kind="ghost" onClick={() => { setQ(""); setStatusF("all"); setAssigneeF("all"); setDateF(""); }}>{t("مسح الفلاتر", "Clear")}</Btn>}</div>
         </div>
@@ -2042,7 +2051,7 @@ function RegistrationModule({ db, save }) {
                 <td className="py-3 px-3 font-semibold text-slate-800">{r.fullName}</td>
                 <td className="px-3 text-slate-600" dir="ltr">{r.phone}</td>
                 <td className="px-3 text-slate-500" dir="ltr">{r.idNumber || "—"}</td>
-                <td className="px-3 text-slate-600">{r.assignee}</td>
+                <td className="px-3 text-slate-600">{agentName(r.assignee)}</td>
                 <td className="px-3"><Pill color={REG_STATUS_COLOR[st]}>{t(REG_STATUS_LABEL[st][0], REG_STATUS_LABEL[st][1])}</Pill></td>
                 <td className="px-3 text-xs text-slate-500">{regStepCount(r)}/{REG_STEPS.length}</td>
                 <td className="px-3"><button onClick={() => setSel(r)} className="text-xs font-semibold" style={{ color: BRAND.blue }}>{t("متابعة", "Open")}</button></td>
@@ -2071,7 +2080,9 @@ function RegistrationModule({ db, save }) {
 
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500">{t("الموظف المسؤول:", "Assignee:")}</span>
-              <select className="rounded-lg border border-slate-300 px-2 py-1 text-sm" value={r.assignee} onChange={(e) => reassign(r, e.target.value)}>{staff.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+              {isManager
+                ? <select className="rounded-lg border border-slate-300 px-2 py-1 text-sm" value={r.assignee} onChange={(e) => reassign(r, e.target.value)}>{agents.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}{!agents.some((a) => a.id === r.assignee) && <option value={r.assignee}>{agentName(r.assignee)}</option>}</select>
+                : <b className="text-sm">{agentName(r.assignee)}</b>}
             </div>
 
             <div className="border border-slate-200 rounded-xl p-3">
@@ -2104,11 +2115,36 @@ function RegistrationModule({ db, save }) {
 
       <Modal open={manageOpen} onClose={() => setManageOpen(false)} title={t("موظفو التوزيع التلقائي", "Auto-assign Staff")}>
         <div className="space-y-3">
-          <p className="text-xs text-slate-500">{t("توزّع طلبات التسجيل بالتساوي على هؤلاء (Round Robin).", "New requests are distributed evenly across these (Round Robin).")}</p>
-          <div className="space-y-1">{staff.map((s) => <div key={s} className="flex items-center justify-between border-b border-slate-50 py-2"><span className="font-semibold text-sm">{s}</span><button onClick={() => removeStaff(s)} className="text-xs text-red-600 font-semibold">{t("إزالة", "Remove")}</button></div>)}</div>
-          <div className="flex gap-2"><input className={inputCls} placeholder={t("اسم الموظف", "Staff name")} value={newStaff} onChange={(e) => setNewStaff(e.target.value)} /><Btn onClick={addStaff}><Plus size={15} /> {t("إضافة", "Add")}</Btn></div>
+          <p className="text-xs text-slate-500">{t("توزّع الطلبات بالتساوي على الموظفين المخوّلين (Round Robin). التخويل يتم من نافذة الموظفين → حساب الدخول → مخوّل بمتابعة التسجيل.", "Requests are distributed evenly across authorized agents. Authorize them from Employees → Login Account → Reg agent.")}</p>
+          <div className="space-y-1">{agents.length === 0 ? <p className="text-sm text-slate-400 py-3 text-center">{t("لا يوجد موظفون مخوّلون بعد", "No authorized agents yet")}</p> : agents.map((s) => <div key={s.id} className="flex items-center justify-between border-b border-slate-50 py-2"><span className="font-semibold text-sm">{s.name}</span><span className="text-xs text-slate-400" dir="ltr">{s.id}</span></div>)}</div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function AreasWindow({ db, save }) {
+  const areas = db.areas || [];
+  const [name, setName] = useState("");
+  const add = () => { const n = name.trim(); if (n && !areas.includes(n)) { save({ ...db, areas: [...areas, n].sort() }); setName(""); } };
+  const remove = (a) => { if (window.confirm(t("حذف هذه المنطقة؟", "Delete this area?"))) save({ ...db, areas: areas.filter((x) => x !== a) }); };
+  const usedBy = (a) => db.riders.filter((r) => (r.area || "") === a).length;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.navy }}><MapPin size={18} color="#fff" /></span><h2 className="font-extrabold text-lg text-slate-800">{t("إدارة المناطق", "Manage Areas")}</h2></div>
+      <Card className="p-5 max-w-lg">
+        <p className="text-xs text-slate-500 mb-4">{t("المناطق تظهر كقائمة منسدلة في تسجيل المناديب ونموذج التسجيل العام.", "Areas appear as a dropdown in rider registration and the public form.")}</p>
+        <div className="flex gap-2 mb-4"><input className={inputCls} placeholder={t("اسم المنطقة (مثل: نزوى)", "Area name (e.g. Nizwa)")} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} /><Btn onClick={add}><Plus size={15} /> {t("إضافة", "Add")}</Btn></div>
+        <div className="space-y-1">
+          {areas.map((a) => (
+            <div key={a} className="flex items-center justify-between border-b border-slate-50 py-2">
+              <span className="font-semibold text-sm text-slate-700">{a} {usedBy(a) > 0 && <span className="text-xs text-slate-400">({usedBy(a)})</span>}</span>
+              <button onClick={() => remove(a)} className="text-xs text-red-600 font-semibold">{t("حذف", "Delete")}</button>
+            </div>
+          ))}
+          {areas.length === 0 && <p className="text-sm text-slate-400 py-4 text-center">{t("لا توجد مناطق — أضف أول منطقة", "No areas — add the first one")}</p>}
+        </div>
+      </Card>
     </div>
   );
 }
@@ -2121,13 +2157,14 @@ function sidebarFor(user) {
     items.push({ key: "shifts", label: t("الشفتات (كل الشركات)", "Shifts (All)"), kind: "shifts" });
     items.push({ key: "employees", label: t("الموظفون", "Employees"), kind: "employees" });
     items.push({ key: "registration", label: t("تسجيل المناديب", "Registration"), kind: "registration" });
+    items.push({ key: "areas", label: t("المناطق", "Areas"), kind: "areas" });
     items.push({ key: "archive", label: t("الأرشيف", "Archive"), kind: "archive" });
     items.push({ key: "allriders", label: t("كل المناديب", "All Riders"), kind: "allriders" });
     items.push({ key: "reports", label: t("تقارير عامة", "Reports"), kind: "reports" });
   }
   return items;
 }
-const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, archive: Trash2 };
+const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, areas: MapPin, archive: Trash2 };
 
 const REG_STEPS = [
   { key: "contacted", ar: "تم التواصل مع المندوب", en: "Contacted" },
@@ -2160,6 +2197,8 @@ function RegistrationForm({ onToggleLang }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState("");
+  const [areas, setAreas] = useState([]);
+  useEffect(() => { supabase.functions.invoke("submit-registration", { body: { action: "getAreas" } }).then(({ data }) => { if (data && Array.isArray(data.areas)) setAreas(data.areas); }).catch(() => {}); }, []);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const submit = () => {
     if (!f.fullName.trim() || !f.phone.trim()) return setErr(t("الاسم ورقم الهاتف مطلوبان", "Name and phone are required"));
@@ -2193,7 +2232,9 @@ function RegistrationForm({ onToggleLang }) {
               <Field label={t("البريد الإلكتروني (اختياري)", "Email (optional)")}><input className={inputCls} dir="ltr" value={f.email} onChange={set("email")} /></Field>
               <Field label={t("الجنسية", "Nationality")}><input className={inputCls} value={f.nationality} onChange={set("nationality")} /></Field>
               <Field label={t("رقم البطاقة / الجواز", "ID / Passport No.")}><input className={inputCls} dir="ltr" value={f.idNumber} onChange={set("idNumber")} /></Field>
-              <Field label={t("الولاية", "Wilaya / State")}><input className={inputCls} value={f.wilaya} onChange={set("wilaya")} /></Field>
+              <Field label={t("الولاية / المنطقة", "Wilaya / Area")}>{areas.length > 0
+                ? <select className={inputCls} value={f.wilaya} onChange={set("wilaya")}><option value="">{t("— اختر —", "— select —")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
+                : <input className={inputCls} value={f.wilaya} onChange={set("wilaya")} />}</Field>
               <Field label={t("الشركة المطلوبة", "Preferred Company")}><select className={inputCls} value={f.company} onChange={set("company")}><option value="">{t("— اختياري —", "— optional —")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
               <Field label={t("نوع المركبة", "Vehicle Type")}><select className={inputCls} value={f.vehicleType} onChange={set("vehicleType")}>{VEHICLES.map(([v, ar, en]) => <option key={v} value={v}>{t(ar, en)}</option>)}</select></Field>
               <Field label={t("هل لديك رخصة قيادة؟", "Do you have a driving license?")}><select className={inputCls} value={f.hasLicense} onChange={set("hasLicense")}><option value="yes">{t("نعم", "Yes")}</option><option value="no">{t("لا", "No")}</option></select></Field>
@@ -2323,7 +2364,8 @@ export default function App() {
     if (activeItem.kind === "allriders") return <Riders db={db} save={save} company={null} user={user} />;
     if (activeItem.kind === "shifts") return <ShiftsWindow db={db} save={save} />;
     if (activeItem.kind === "employees") return <Employees db={db} save={save} />;
-    if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} />;
+    if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} user={user} />;
+    if (activeItem.kind === "areas") return <AreasWindow db={db} save={save} />;
     if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
     if (activeItem.kind === "reports") return <ReportsScoped db={db} company={null} />;
     return null;
