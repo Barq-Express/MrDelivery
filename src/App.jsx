@@ -1018,7 +1018,7 @@ function Riders({ db, save, company, user }) {
             <Field label={tr("الحالة")}><select className={inputCls} value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></Field>
             <Field label={t("تاريخ الانضمام", "Join Date")}><input type="date" className={inputCls} value={editing.joinDate || ""} onChange={(e) => setEditing({ ...editing, joinDate: e.target.value })} /></Field>
             <Field label={t("تاريخ توقيع العقد", "Contract Sign Date")}><input type="date" className={inputCls} value={editing.contractDate || ""} onChange={(e) => setEditing({ ...editing, contractDate: e.target.value })} /></Field>
-            <Field label={tr("كلمة مرور المندوب")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>
+            {user && user.role === "Admin" && <Field label={tr("كلمة مرور المندوب")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>}
             <div className="col-span-2"><Field label={tr("ملاحظات")}><textarea className={inputCls} rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field></div>
             <div className="col-span-2 flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>{tr("إلغاء")}</Btn><Btn onClick={submit}>{tr("حفظ")}</Btn></div>
           </div>
@@ -1744,7 +1744,8 @@ function ShiftsWindow({ db, save, company = null }) {
 const EMP_ROLES = [["Supervisor", "مشرف"], ["Operations", "عمليات"], ["Team Leader", "قائد فريق"], ["Area Manager", "مدير منطقة"]];
 const empRoleAr = (v) => { const f = EMP_ROLES.find((x) => x[0] === v); return f ? f[1] : v; };
 
-function Employees({ db, save }) {
+function Employees({ db, save, user }) {
+  const isAdmin = user && user.role === "Admin";
   const [q, setQ] = useState(""); const [cf, setCf] = useState("all"); const [af, setAf] = useState("all");
   const [editing, setEditing] = useState(null);
   const emps = db.employees || [];
@@ -1838,16 +1839,16 @@ function Employees({ db, save }) {
       <Card className="p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h3 className="font-bold text-slate-800 flex items-center gap-2"><KeyRound size={16} /> {t("حسابات الدخول", "Login Accounts")}</h3>
-          <Btn onClick={() => { setAcc(blankAcc); setAccMsg(""); setShowAcc(true); }}><Plus size={16} /> {t("إضافة حساب دخول", "Add Login Account")}</Btn>
+          {isAdmin && <Btn onClick={() => { setAcc(blankAcc); setAccMsg(""); setShowAcc(true); }}><Plus size={16} /> {t("إضافة حساب دخول", "Add Login Account")}</Btn>}
         </div>
-        <p className="text-xs text-slate-400 mb-3">{t("الموظف يدخل بالبريد وكلمة المرور، ويقدر يغيّر كلمة المرور من الإعدادات ⚙️", "The employee signs in with email + password, and can change it from Settings ⚙️")}</p>
+        <p className="text-xs text-slate-400 mb-3">{isAdmin ? t("الموظف يدخل بالبريد وكلمة المرور، ويقدر يغيّر كلمة المرور من الإعدادات ⚙️", "The employee signs in with email + password, and can change it from Settings ⚙️") : t("إدارة الحسابات وكلمات المرور متاحة لمدير النظام فقط.", "Managing accounts and passwords is available to the System Admin only.")}</p>
         <div className="space-y-1 text-sm">
           {accounts.map((a) => (
             <div key={a.email} className="flex items-center justify-between border-b border-slate-50 py-1.5 flex-wrap gap-2">
               <span dir="ltr" className="font-mono text-xs text-slate-700">{a.email}</span>
               <span className="flex items-center gap-2">
                 <Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}
-                <button onClick={() => { setResetAcc(a); setResetPw(""); setResetMsg(""); }} className="text-xs font-semibold" style={{ color: BRAND.orange }} title={t("إعادة تعيين كلمة المرور", "Reset password")}><KeyRound size={13} className="inline" /> {t("كلمة المرور", "Password")}</button>
+                {isAdmin && <button onClick={() => { setResetAcc(a); setResetPw(""); setResetMsg(""); }} className="text-xs font-semibold" style={{ color: BRAND.orange }} title={t("إعادة تعيين كلمة المرور", "Reset password")}><KeyRound size={13} className="inline" /> {t("كلمة المرور", "Password")}</button>}
               </span>
             </div>
           ))}
@@ -2390,7 +2391,7 @@ export default function App() {
     if (activeItem.kind === "company") return <CompanyWindow company={activeItem.company} db={db} save={save} user={user} />;
     if (activeItem.kind === "allriders") return <Riders db={db} save={save} company={null} user={user} />;
     if (activeItem.kind === "shifts") return <ShiftsWindow db={db} save={save} />;
-    if (activeItem.kind === "employees") return <Employees db={db} save={save} />;
+    if (activeItem.kind === "employees") return <Employees db={db} save={save} user={user} />;
     if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} user={user} />;
     if (activeItem.kind === "areas") return <AreasWindow db={db} save={save} />;
     if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
