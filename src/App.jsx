@@ -1786,6 +1786,10 @@ function Employees({ db, save, user }) {
   const [resetPw, setResetPw] = useState("");
   const [resetMsg, setResetMsg] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
+  const toggleAgent = (a) => {
+    const cur = (db.staff || {})[a.email] || { role: a.role, name: a.name, company: a.company };
+    save({ ...db, staff: { ...(db.staff || {}), [a.email]: { ...cur, regAgent: !a.regAgent } } });
+  };
   const doReset = () => {
     if (!resetPw || resetPw.length < 6) return setResetMsg(t("كلمة مرور 6 خانات على الأقل", "Password must be 6+ characters"));
     setResetBusy(true); setResetMsg("");
@@ -1849,6 +1853,7 @@ function Employees({ db, save, user }) {
               <span dir="ltr" className="font-mono text-xs text-slate-700">{a.email}</span>
               <span className="flex items-center gap-2">
                 <Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}
+                {isAdmin && <button onClick={() => toggleAgent(a)} className="text-xs font-semibold" style={{ color: a.regAgent ? "#c0341d" : "#0f9d58" }} title={t("تفعيل/إلغاء متابعة التسجيل", "Toggle registration follow-up")}>{a.regAgent ? t("إلغاء المتابعة", "Unset agent") : t("تعيين متابع", "Set agent")}</button>}
                 {isAdmin && <button onClick={() => { setResetAcc(a); setResetPw(""); setResetMsg(""); }} className="text-xs font-semibold" style={{ color: BRAND.orange }} title={t("إعادة تعيين كلمة المرور", "Reset password")}><KeyRound size={13} className="inline" /> {t("كلمة المرور", "Password")}</button>}
               </span>
             </div>
