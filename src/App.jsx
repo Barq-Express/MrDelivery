@@ -1780,6 +1780,19 @@ function Employees({ db, save }) {
       setAcc(blankAcc);
     });
   };
+  const [resetAcc, setResetAcc] = useState(null); // {email}
+  const [resetPw, setResetPw] = useState("");
+  const [resetMsg, setResetMsg] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const doReset = () => {
+    if (!resetPw || resetPw.length < 6) return setResetMsg(t("كلمة مرور 6 خانات على الأقل", "Password must be 6+ characters"));
+    setResetBusy(true); setResetMsg("");
+    supabase.functions.invoke("create-staff", { body: { action: "reset", email: resetAcc.email, password: resetPw, secret: STAFF_FN_SECRET } }).then(({ data, error }) => {
+      setResetBusy(false);
+      if (error || (data && data.error)) return setResetMsg((data && data.error) ? String(data.error) : t("تعذّر إعادة التعيين", "Reset failed"));
+      setResetMsg(t("✅ تم تغيير كلمة المرور", "✅ Password updated"));
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -1832,11 +1845,25 @@ function Employees({ db, save }) {
           {accounts.map((a) => (
             <div key={a.email} className="flex items-center justify-between border-b border-slate-50 py-1.5 flex-wrap gap-2">
               <span dir="ltr" className="font-mono text-xs text-slate-700">{a.email}</span>
-              <span className="flex items-center gap-2"><Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}</span>
+              <span className="flex items-center gap-2">
+                <Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}
+                <button onClick={() => { setResetAcc(a); setResetPw(""); setResetMsg(""); }} className="text-xs font-semibold" style={{ color: BRAND.orange }} title={t("إعادة تعيين كلمة المرور", "Reset password")}><KeyRound size={13} className="inline" /> {t("كلمة المرور", "Password")}</button>
+              </span>
             </div>
           ))}
         </div>
       </Card>
+
+      <Modal open={!!resetAcc} onClose={() => setResetAcc(null)} title={t("إعادة تعيين كلمة المرور", "Reset Password")}>
+        {resetAcc && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">{t("الحساب:", "Account:")} <b dir="ltr">{resetAcc.email}</b></p>
+            <Field label={t("كلمة المرور الجديدة", "New Password")}><input className={inputCls} dir="ltr" value={resetPw} onChange={(e) => setResetPw(e.target.value)} placeholder={t("6 خانات على الأقل", "min 6 characters")} /></Field>
+            {resetMsg && <p className="text-xs" style={{ color: resetMsg.charAt(0) === "✅" ? "#0f9d58" : "#c0341d" }}>{resetMsg}</p>}
+            <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setResetAcc(null)}>{tr("إغلاق")}</Btn><Btn onClick={doReset}>{resetBusy ? "..." : t("تعيين", "Set Password")}</Btn></div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={showAcc} onClose={() => setShowAcc(false)} title={t("إضافة حساب دخول", "Add Login Account")}>
         <div className="space-y-4">
