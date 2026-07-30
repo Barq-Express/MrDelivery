@@ -327,6 +327,7 @@ const STAFF_USERS = [
 ];
 
 const STAFF_BY_EMAIL = {
+  "sulimanalhatmi.9669@gmail.com": { role: "Admin", name: "سليمان الحاتمي", company: null },
   "admin@mrd.app": { role: "Admin", name: "مدير النظام", company: null },
   "ops@mrd.app": { role: "Operations Manager", name: "مدير العمليات", company: null },
   "finance@mrd.app": { role: "Finance", name: "المالية", company: null },
