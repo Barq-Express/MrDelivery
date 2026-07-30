@@ -1018,7 +1018,7 @@ function Riders({ db, save, company, user }) {
             <Field label={tr("الحالة")}><select className={inputCls} value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })}><option value="Active">Active</option><option value="Inactive">Inactive</option></select></Field>
             <Field label={t("تاريخ الانضمام", "Join Date")}><input type="date" className={inputCls} value={editing.joinDate || ""} onChange={(e) => setEditing({ ...editing, joinDate: e.target.value })} /></Field>
             <Field label={t("تاريخ توقيع العقد", "Contract Sign Date")}><input type="date" className={inputCls} value={editing.contractDate || ""} onChange={(e) => setEditing({ ...editing, contractDate: e.target.value })} /></Field>
-            {user && user.role === "Admin" && <Field label={tr("كلمة مرور المندوب")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>}
+            {(!editing.id || (user && user.role === "Admin")) && <Field label={editing.id ? tr("كلمة مرور المندوب") : t("كلمة المرور الأولية", "Initial Password")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>}
             <div className="col-span-2"><Field label={tr("ملاحظات")}><textarea className={inputCls} rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field></div>
             <div className="col-span-2 flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>{tr("إلغاء")}</Btn><Btn onClick={submit}>{tr("حفظ")}</Btn></div>
           </div>
