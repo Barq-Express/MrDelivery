@@ -2011,6 +2011,15 @@ function RegistrationModule({ db, save, user }) {
   const toggleStep = (r, key) => upd(r.id, { steps: { ...(r.steps || {}), [key]: !(r.steps && r.steps[key]) } });
   const reassign = (r, who) => upd(r.id, { assignee: who });
   const delReg = (r) => { if (window.confirm(t("حذف هذا الطلب نهائياً؟", "Delete this request permanently?"))) { save({ ...db, registrations: regs.filter((x) => x.id !== r.id) }); setSel(null); } };
+  const [rejectFor, setRejectFor] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectErr, setRejectErr] = useState("");
+  const doReject = () => {
+    if (!rejectReason.trim()) { setRejectErr(t("سبب الرفض مطلوب", "Rejection reason is required")); return; }
+    upd(rejectFor.id, { rejected: true, rejectReason: rejectReason.trim(), rejectedAt: todayStr(), rejectedBy: (user && (user.name || user.email)) || "" });
+    setRejectFor(null); setRejectReason(""); setRejectErr(""); setSel(null);
+  };
+  const unreject = (r) => { if (window.confirm(t("إعادة تفعيل هذا الطلب؟", "Reactivate this request?"))) upd(r.id, { rejected: false, rejectReason: "" }); };
   const convert = (r) => {
     if (!regStepsDone(r)) return;
     const rider = {
@@ -2026,7 +2035,7 @@ function RegistrationModule({ db, save, user }) {
   // manager sees all; a non-manager agent sees only their own requests
   const visibleRegs = isManager ? regs : regs.filter((r) => r.assignee === myId || agentName(r.assignee) === (user && user.name));
 
-  const counts = { total: visibleRegs.length, new: 0, in_progress: 0, docs_missing: 0, await_training: 0, ready: 0, completed: 0 };
+  const counts = { total: visibleRegs.length, new: 0, in_progress: 0, docs_missing: 0, await_training: 0, ready: 0, completed: 0, rejected: 0 };
   visibleRegs.forEach((r) => { counts[regStatus(r)]++; });
   const perStaff = {}; agents.forEach((s) => { perStaff[s.id] = regs.filter((r) => r.assignee === s.id && !r.converted).length; });
 
@@ -2136,15 +2145,32 @@ function RegistrationModule({ db, save, user }) {
               </div>
             </div>
 
+            {r.rejected && <div className="p-3 rounded-lg text-sm" style={{ background: "#fff1ee", color: "#c0341d" }}><b>{t("طلب مرفوض", "Rejected")}</b> — {r.rejectReason}<div className="text-xs text-slate-400 mt-1">{r.rejectedBy} · {r.rejectedAt}</div></div>}
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <button onClick={() => delReg(r)} className="text-xs font-semibold text-red-600">{t("حذف الطلب", "Delete request")}</button>
+              <div className="flex items-center gap-3">
+                {isManager && <button onClick={() => delReg(r)} className="text-xs font-semibold text-slate-400">{t("حذف الطلب", "Delete request")}</button>}
+                {r.rejected
+                  ? <button onClick={() => unreject(r)} className="text-xs font-semibold" style={{ color: BRAND.blue }}>{t("إعادة تفعيل", "Reactivate")}</button>
+                  : <button onClick={() => { setRejectFor(r); setRejectReason(""); setRejectErr(""); }} className="text-xs font-semibold text-red-600">{t("رفض الطلب", "Reject request")}</button>}
+              </div>
               {r.converted
                 ? <Pill color="#0f9d58">{t("تم التحويل إلى مندوب ✓", "Converted to driver ✓")}</Pill>
-                : <Btn kind={regStepsDone(r) ? "success" : "ghost"} onClick={() => convert(r)} disabled={!regStepsDone(r)}><CheckCircle2 size={16} /> Convert to Driver</Btn>}
+                : (!r.rejected && <Btn kind={regStepsDone(r) ? "success" : "ghost"} onClick={() => convert(r)} disabled={!regStepsDone(r)}><CheckCircle2 size={16} /> Convert to Driver</Btn>)}
             </div>
             {!r.converted && !regStepsDone(r) && <p className="text-xs text-slate-400 text-left">{t("أكمل جميع الخطوات لتفعيل التحويل.", "Complete all steps to enable conversion.")}</p>}
           </div>
         ); })()}
+      </Modal>
+
+      <Modal open={!!rejectFor} onClose={() => setRejectFor(null)} title={t("رفض طلب التسجيل", "Reject Registration")}>
+        {rejectFor && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">{t("المندوب:", "Driver:")} <b>{rejectFor.fullName}</b></p>
+            <Field label={t("سبب الرفض (إجباري)", "Rejection reason (required)")}><textarea className={inputCls} rows={3} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder={t("اكتب سبب الرفض...", "Write the reason...")} /></Field>
+            {rejectErr && <p className="text-xs text-red-600">{rejectErr}</p>}
+            <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setRejectFor(null)}>{tr("إلغاء")}</Btn><Btn onClick={doReject} className="!bg-red-600">{t("تأكيد الرفض", "Confirm Reject")}</Btn></div>
+          </div>
+        )}
       </Modal>
 
       <Modal open={manageOpen} onClose={() => setManageOpen(false)} title={t("موظفو التوزيع التلقائي", "Auto-assign Staff")}>
@@ -2222,6 +2248,7 @@ const VEHICLES = [["motorcycle", "دراجة نارية", "Motorcycle"], ["car",
 const regStepsDone = (r) => REG_STEPS.every((s) => r.steps && r.steps[s.key]);
 const regStepCount = (r) => REG_STEPS.filter((s) => r.steps && r.steps[s.key]).length;
 const regStatus = (r) => {
+  if (r.rejected) return "rejected";
   if (r.converted) return "completed";
   if (regStepsDone(r)) return "ready";
   if (r.steps && r.steps.docs_reviewed && !r.steps.training) return "await_training";
@@ -2229,8 +2256,8 @@ const regStatus = (r) => {
   if (regStepCount(r) > 0) return "in_progress";
   return "new";
 };
-const REG_STATUS_LABEL = { new: ["جديد", "New"], in_progress: ["قيد المتابعة", "In progress"], docs_missing: ["ناقص مستندات", "Docs missing"], await_training: ["بانتظار التدريب", "Awaiting training"], ready: ["جاهز للتحويل", "Ready to convert"], completed: ["تم التسجيل", "Registered"] };
-const REG_STATUS_COLOR = { new: "#6b7280", in_progress: BRAND.blue, docs_missing: "#d97706", await_training: "#7c3aed", ready: "#0f9d58", completed: "#0C1B33" };
+const REG_STATUS_LABEL = { new: ["جديد", "New"], in_progress: ["قيد المتابعة", "In progress"], docs_missing: ["ناقص مستندات", "Docs missing"], await_training: ["بانتظار التدريب", "Awaiting training"], ready: ["جاهز للتحويل", "Ready to convert"], completed: ["تم التسجيل", "Registered"], rejected: ["مرفوض", "Rejected"] };
+const REG_STATUS_COLOR = { new: "#6b7280", in_progress: BRAND.blue, docs_missing: "#d97706", await_training: "#7c3aed", ready: "#0f9d58", completed: "#0C1B33", rejected: "#c0341d" };
 
 function RegistrationForm({ onToggleLang }) {
   const blank = { fullName: "", phone: "", email: "", nationality: "", idNumber: "", wilaya: "", company: "", vehicleType: "motorcycle", hasLicense: "yes", bankName: "", bank: "", swift: "", notes: "" };
