@@ -2016,7 +2016,7 @@ function RegistrationModule({ db, save, user }) {
     const rider = {
       id: uid(), name: r.fullName, phone: r.phone, companyId: r.driverId || "", civil: r.idNumber || "", area: r.wilaya || "",
       commission: "", company: r.company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "",
-      status: "Active", bank: "", bankName: "", swift: "", nationality: r.nationality || "", vehicleType: r.vehicleType || "",
+      status: "Active", bank: r.bank || "", bankName: r.bankName || "", swift: r.swift || "", nationality: r.nationality || "", vehicleType: r.vehicleType || "",
       notes: r.notes || "", username: r.username || r.phone, password: r.password || "1234", lastWorked: null,
     };
     save({ ...db, riders: [...db.riders, rider], registrations: regs.map((x) => (x.id === r.id ? { ...x, converted: true, convertedAt: todayStr() } : x)) });
@@ -2184,17 +2184,24 @@ function AreasWindow({ db, save }) {
 }
 
 function sidebarFor(user) {
-  if (user.role === "Supervisor") return [{ key: "company:" + user.company, label: cLabel(user.company), kind: "company", company: user.company }];
+  const regItem = { key: "registration", label: t("تسجيل المناديب", "Registration"), kind: "registration" };
+  if (user.role === "Supervisor") {
+    const items = [{ key: "company:" + user.company, label: cLabel(user.company), kind: "company", company: user.company }];
+    if (user.regAgent) items.push(regItem);
+    return items;
+  }
   const items = [{ key: "dashboard", label: t("اللوحة العامة", "Dashboard"), kind: "dashboard" }];
   COMPANIES.forEach((c) => items.push({ key: "company:" + c, label: cLabel(c), kind: "company", company: c }));
   if (user.role === "Admin" || user.role === "Operations Manager") {
     items.push({ key: "shifts", label: t("الشفتات (كل الشركات)", "Shifts (All)"), kind: "shifts" });
     items.push({ key: "employees", label: t("الموظفون", "Employees"), kind: "employees" });
-    items.push({ key: "registration", label: t("تسجيل المناديب", "Registration"), kind: "registration" });
+    items.push(regItem);
     items.push({ key: "areas", label: t("المناطق", "Areas"), kind: "areas" });
     items.push({ key: "archive", label: t("الأرشيف", "Archive"), kind: "archive" });
     items.push({ key: "allriders", label: t("كل المناديب", "All Riders"), kind: "allriders" });
     items.push({ key: "reports", label: t("تقارير عامة", "Reports"), kind: "reports" });
+  } else if (user.regAgent) {
+    items.push(regItem);
   }
   return items;
 }
@@ -2226,7 +2233,7 @@ const REG_STATUS_LABEL = { new: ["جديد", "New"], in_progress: ["قيد ال�
 const REG_STATUS_COLOR = { new: "#6b7280", in_progress: BRAND.blue, docs_missing: "#d97706", await_training: "#7c3aed", ready: "#0f9d58", completed: "#0C1B33" };
 
 function RegistrationForm({ onToggleLang }) {
-  const blank = { fullName: "", phone: "", email: "", nationality: "", idNumber: "", wilaya: "", company: "", vehicleType: "motorcycle", hasLicense: "yes", notes: "" };
+  const blank = { fullName: "", phone: "", email: "", nationality: "", idNumber: "", wilaya: "", company: "", vehicleType: "motorcycle", hasLicense: "yes", bankName: "", bank: "", swift: "", notes: "" };
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -2239,6 +2246,7 @@ function RegistrationForm({ onToggleLang }) {
     setBusy(true); setErr("");
     supabase.functions.invoke("submit-registration", { body: { ...f, hasLicense: f.hasLicense === "yes" } }).then(({ data, error }) => {
       setBusy(false);
+      if (data && data.duplicate) { setErr("DUP"); return; }
       if (error || (data && data.error)) return setErr((data && data.error) ? String(data.error) : t("تعذّر الإرسال، حاول مرة أخرى", "Submission failed, try again"));
       setDone(true);
     });
@@ -2272,9 +2280,14 @@ function RegistrationForm({ onToggleLang }) {
               <Field label={t("الشركة المطلوبة", "Preferred Company")}><select className={inputCls} value={f.company} onChange={set("company")}><option value="">{t("— اختياري —", "— optional —")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
               <Field label={t("نوع المركبة", "Vehicle Type")}><select className={inputCls} value={f.vehicleType} onChange={set("vehicleType")}>{VEHICLES.map(([v, ar, en]) => <option key={v} value={v}>{t(ar, en)}</option>)}</select></Field>
               <Field label={t("هل لديك رخصة قيادة؟", "Do you have a driving license?")}><select className={inputCls} value={f.hasLicense} onChange={set("hasLicense")}><option value="yes">{t("نعم", "Yes")}</option><option value="no">{t("لا", "No")}</option></select></Field>
+              <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={f.bankName} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setF({ ...f, bankName: e.target.value, swift: b ? b.swift : "" }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
+              <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} dir="ltr" value={f.bank} onChange={set("bank")} /></Field>
+              <Field label={t("سويفت كود", "SWIFT Code")}><input className={inputCls} dir="ltr" value={f.swift} onChange={set("swift")} placeholder={t("يُعبّأ تلقائياً من البنك", "auto-filled from bank")} /></Field>
             </div>
             <div className="mt-4"><Field label={t("ملاحظات (اختياري)", "Notes (optional)")}><textarea className={inputCls} rows={2} value={f.notes} onChange={set("notes")} /></Field></div>
-            {err && <p className="text-xs text-red-600 mt-3">{err}</p>}
+            {err === "DUP"
+              ? <div className="mt-4 p-3 rounded-lg text-center font-bold" style={{ background: "#fff1ee", color: "#c0341d" }}>⚠️ {t("تم تسجيلك سابقاً — لا يمكن التسجيل مرة أخرى بنفس الرقم أو البطاقة.", "You are already registered — cannot register again with the same phone or ID.")}</div>
+              : err && <p className="text-xs text-red-600 mt-3">{err}</p>}
             <div className="mt-5"><Btn onClick={submit} className="w-full justify-center">{busy ? "..." : t("إرسال الطلب", "Submit Request")}</Btn></div>
           </Card>
         )}
