@@ -20,6 +20,7 @@ const LOGO_MARK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAABFCAYAAAC
 const NO_WORK_DAYS = 7;
 
 const COMPANIES = ["Talabat", "Snoonu", "Aramex"];
+const HOUR_RATE = 1.77; // قيمة ساعة الدوام للفول تايم (ريال)
 const BANKS = [
   { name: "Ahlibank SAOG", swift: "AUBOOMRU" },
   { name: "AL Hilal Islamic Window", swift: "AUBOOMRUALH" },
@@ -510,6 +511,7 @@ function riderMoney(db, riderId) {
   const rider = db.riders.find((r) => r.id === riderId);
   const rows = db.imports.flatMap((i) => i.results).filter((r) => r.riderId === riderId);
   const orders = rows.reduce((a, r) => a + (r.orders || 0), 0);
+  const hours = rows.reduce((a, r) => a + (Number(r.hours) || 0), 0);
   const codToTransfer = rows.reduce((a, r) => a + (r.transferDue || 0), 0);
   const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved").reduce((a, t) => a + t.amount, 0);
   let earn = 0;
@@ -519,10 +521,11 @@ function riderMoney(db, riderId) {
       const rate = Number(rider.commission) > 0 ? Number(rider.commission) : (defRate[rider.company] || 0);
       earn = orders * rate;
     } else {
-      earn = computeEarn(rider.company, rider.type, orders);
+      earn = hours * HOUR_RATE;
     }
   }
-  return { orders, codToTransfer, transferred, owed: codToTransfer - transferred, earn };
+  const hoursPay = hours * HOUR_RATE;
+  return { orders, hours, hoursPay, codToTransfer, transferred, owed: codToTransfer - transferred, earn };
 }
 
 /* ============================================================
@@ -532,7 +535,7 @@ function ExcelImporter({ company, riders, onApply }) {
   const [sheetDate, setSheetDate] = useState(todayStr());
   const [headers, setHeaders] = useState(null);
   const [rows, setRows] = useState([]);
-  const [map, setMap] = useState({ id: 0, key: 1, orders: 3, cod: 4, due: 5 });
+  const [map, setMap] = useState({ id: 0, key: 1, orders: 3, cod: 4, due: 5, hours: 6 });
   const [edits, setEdits] = useState({});
   const [fileName, setFileName] = useState("");
   const fileRef = useRef();
@@ -567,6 +570,7 @@ function ExcelImporter({ company, riders, onApply }) {
         orders: guess(hs, ["order", tr("طلب"), "delivered", "trips", "count"]),
         cod: guess(hs, ["cod", "cash", tr("نقد"), "collected", tr("تحصيل")]),
         due: guess(hs, ["transfer", tr("تحويل"), "due", "payable", tr("مستحق")]),
+        hours: guess(hs, ["hour", "ساعات", "ساعة", "hours", "دوام"]),
       });
     });
   };
@@ -577,9 +581,10 @@ function ExcelImporter({ company, riders, onApply }) {
       const rider = matchRider(r);
       const orders = Number(valOf(r, i, "orders")) || 0;
       const cod = Number(valOf(r, i, "cod")) || 0;
+      const hours = Number(valOf(r, i, "hours")) || 0;
       const transferDue = isTalabat ? (Number(r[map.due]) || cod) : cod;
-      results.push({ riderId: rider ? rider.id : null, name: rider ? rider.name : String(r[map.key] || r[map.id]), matched: !!rider, orders, cod, transferDue });
-      if (rider && (orders > 0 || cod > 0)) matched.add(rider.id); // worked only if has orders or COD
+      results.push({ riderId: rider ? rider.id : null, name: rider ? rider.name : String(r[map.key] || r[map.id]), matched: !!rider, orders, cod, hours, transferDue });
+      if (rider && (orders > 0 || cod > 0 || hours > 0)) matched.add(rider.id); // worked if orders/COD/hours
     });
     const notWorked = riders.filter((r) => r.company === company && r.status === "Active" && !matched.has(r.id)).map((r) => r.id);
     onApply({ id: uid(), company, date: sheetDate, fileName, results, notWorkedIds: notWorked });
@@ -589,10 +594,10 @@ function ExcelImporter({ company, riders, onApply }) {
 
   const downloadTemplate = () => {
     const rs = riders.filter((r) => r.company === company);
-    const header = ["الايدي / ID", "الهاتف / Phone", "الاسم / Name", "الطلبات / Orders", "COD"];
-    const body = rs.map((r) => [r.companyId || "", r.phone, r.name, "", ""]);
+    const header = ["الايدي / ID", "الهاتف / Phone", "الاسم / Name", "النوع / Type", "الطلبات / Orders", "COD", "ساعات الدوام / Hours"];
+    const body = rs.map((r) => [r.companyId || "", r.phone, r.name, (r.type === "Full Time" ? "Full Time" : "Freelancer"), "", "", (r.type === "Full Time" ? "" : "—")]);
     const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-    ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
+    ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "template");
     XLSX.writeFile(wb, "MrDelivery-" + company + "-" + todayStr() + ".xlsx");
@@ -619,12 +624,13 @@ function ExcelImporter({ company, riders, onApply }) {
             <Field label={tr("عدد الطلبات")}><select className={inputCls} value={map.orders} onChange={(e) => setMap({ ...map, orders: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
             <Field label={tr("مبلغ COD")}><select className={inputCls} value={map.cod} onChange={(e) => setMap({ ...map, cod: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
             {isTalabat && <Field label={tr("المطلوب تحويله")}><select className={inputCls} value={map.due} onChange={(e) => setMap({ ...map, due: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>}
+            <Field label={t("ساعات الدوام (فول تايم)", "Working Hours (Full Time)")}><select className={inputCls} value={map.hours} onChange={(e) => setMap({ ...map, hours: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
           </div>
 
           <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden">
             <div className="px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-600">{t("راجع وعدّل قبل الاعتماد — الطلبات و COD قابلة للتعديل", "Review & edit before applying — Orders and COD are editable")}</div>
             <div className="max-h-72 overflow-auto"><table className="w-full text-xs">
-              <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), "ID", tr("عدد الطلبات"), tr("مبلغ COD"), ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+              <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), "ID", tr("عدد الطلبات"), tr("مبلغ COD"), t("ساعات", "Hours"), ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
               <tbody>
                 {rows.slice(0, 300).map((r, i) => {
                   const rider = matchRider(r);
@@ -634,6 +640,7 @@ function ExcelImporter({ company, riders, onApply }) {
                       <td className="px-2 text-slate-500" dir="ltr">{String(r[map.id] || "—")}</td>
                       <td className="px-2"><input type="number" className="w-20 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "orders")} onChange={(e) => setVal(i, "orders", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="0.001" className="w-24 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "cod")} onChange={(e) => setVal(i, "cod", e.target.value)} /></td>
+                      <td className="px-2"><input type="number" step="0.5" className="w-16 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "hours")} onChange={(e) => setVal(i, "hours", e.target.value)} /></td>
                       <td className="px-2">{rider ? <span style={{ color: "#0f9d58" }}>✓</span> : <span style={{ color: "#c0341d" }}>{tr("غير مسجل")}</span>}</td>
                     </tr>
                   );
@@ -945,6 +952,7 @@ function Riders({ db, save, company, user }) {
           <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">{tr("كل المناطق")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
         </div>
         <div className="flex gap-2">
+          <Btn kind="ghost" onClick={() => exportExcel(list.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الهاتف: r.phone, ID: r.companyId || "", الشركة: cLabel(r.company), النوع: r.type, المنطقة: r.area || "", الكوميشن: r.commission || "", البنك: r.bankName || "", رقم_الحساب: r.bank || "", سويفت: r.swift || "", الطلبات: m.orders, "COD_المتبقي": m.owed, المستحق: m.earn, الحالة: r.status }; }), "Riders_" + (company || "All"))}><Download size={16} /> {t("تصدير Excel", "Export Excel")} ({list.length})</Btn>
           {isAdmin && <Btn kind="ghost" onClick={() => { setResetWord(""); setResetOpen(true); }} className="!text-red-600"><Trash2 size={16} /> {t("مسح كل المناديب", "Reset All Riders")}</Btn>}
           <Btn kind="dark" onClick={() => setBulk(true)}><Upload size={16} /> {tr("تسجيل جماعي")}</Btn>
           <Btn onClick={() => setEditing(blank)}><Plus size={16} /> {tr("إضافة مندوب")}</Btn>
@@ -1070,9 +1078,9 @@ function OrdersTab({ company, db, save }) {
   const setRow = (i, which, v) => setEditImp((e) => ({ ...e, results: e.results.map((r, idx) => (idx === i ? { ...r, [which]: v } : r)) }));
   const saveImport = () => {
     const results = editImp.results.map((r) => {
-      const orders = Number(r.orders) || 0; const cod = Number(r.cod) || 0;
+      const orders = Number(r.orders) || 0; const cod = Number(r.cod) || 0; const hours = Number(r.hours) || 0;
       const transferDue = company === "Talabat" ? (Number(r.transferDue) || cod) : cod;
-      return { ...r, orders, cod, transferDue };
+      return { ...r, orders, cod, hours, transferDue };
     });
     const worked = new Set(results.filter((r) => r.riderId && (r.orders > 0 || r.cod > 0)).map((r) => r.riderId));
     const notWorkedIds = db.riders.filter((r) => r.company === company && r.status === "Active" && !worked.has(r.id)).map((r) => r.id);
@@ -1144,13 +1152,14 @@ function OrdersTab({ company, db, save }) {
             <div className="max-w-xs"><Field label={t("تاريخ الشيت", "Sheet Date")}><input type="date" className={inputCls} value={editImp.date} onChange={(e) => setEditImp({ ...editImp, date: e.target.value })} /></Field></div>
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <div className="max-h-80 overflow-auto"><table className="w-full text-xs">
-                <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), tr("عدد الطلبات"), tr("مبلغ COD")].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+                <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), tr("عدد الطلبات"), tr("مبلغ COD"), t("ساعات", "Hours")].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
                 <tbody>
                   {editImp.results.map((r, i) => (
                     <tr key={i} className="border-b border-slate-50">
                       <td className="py-1.5 px-2 font-semibold">{r.name}</td>
                       <td className="px-2"><input type="number" className="w-20 rounded border border-slate-200 px-2 py-1" value={r.orders} onChange={(e) => setRow(i, "orders", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="0.001" className="w-24 rounded border border-slate-200 px-2 py-1" value={r.cod} onChange={(e) => setRow(i, "cod", e.target.value)} /></td>
+                      <td className="px-2"><input type="number" step="0.5" className="w-16 rounded border border-slate-200 px-2 py-1" value={r.hours || ""} onChange={(e) => setRow(i, "hours", e.target.value)} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1380,7 +1389,7 @@ function ReportsScoped({ db, company }) {
     if (type === "cod") return rs.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), COD_للتحويل: m.codToTransfer, المحوّل: m.transferred, المتبقي: m.owed }; });
     if (type === "notworked") return rs.filter((r) => r.status === "Active" && daysSince(r.lastWorked) >= NO_WORK_DAYS).map((r) => ({ المندوب: r.name, الشركة: cLabel(r.company), آخر_عمل: r.lastWorked || "—", الأيام: daysSince(r.lastWorked) }));
     if (type === "freelancer") return rs.filter((r) => r.type === "Freelancer").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), الطلبات: m.orders, المستحق: m.earn }; });
-    if (type === "fulltime") return rs.filter((r) => r.type === "Full Time").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), الطلبات: m.orders, الراتب: m.earn }; });
+    if (type === "fulltime") return rs.filter((r) => r.type === "Full Time").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), الطلبات: m.orders, ساعات_الدوام: m.hours, قيمة_الساعات: m.hoursPay, الراتب: m.earn }; });
     return rs.map((r) => ({ المندوب: r.name, الهاتف: r.phone, المدني: r.civil || "", الشركة: cLabel(r.company), النوع: r.type, الحالة: r.status }));
   }, [type, db, company]);
   const cols = rows[0] ? Object.keys(rows[0]) : [];
@@ -1493,8 +1502,9 @@ function RiderPortal({ db, riderId, creds, refresh }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard icon={<FileBarChart size={16} />} label={tr("الطلبات")} value={m.orders} accent={BRAND.blue} />
         <StatCard icon={<Banknote size={16} />} label={tr("COD للتحويل")} value={omr(m.owed)} accent="#c0341d" />
-        <StatCard icon={<Wallet size={16} />} label={rider.type === "Full Time" ? tr("الراتب الشهري") : tr("المستحق لك")} value={omr(m.earn)} accent="#0f9d58" />
+        <StatCard icon={<Wallet size={16} />} label={rider.type === "Full Time" ? tr("مستحق الساعات") : tr("المستحق لك")} value={omr(m.earn)} accent="#0f9d58" />
         <StatCard icon={<CheckCircle2 size={16} />} label={tr("المحوّل")} value={omr(m.transferred)} accent={BRAND.navy} />
+        {rider.type === "Full Time" && <StatCard icon={<Clock size={16} />} label={tr("ساعات الدوام")} value={m.hours} accent="#7c3aed" />}
       </div>
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} /> {tr("تحويل COD")}</h3>
@@ -1506,6 +1516,38 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         </div>
         {form.receipt && <img src={form.receipt} alt={tr("إيصال")} className="mt-3 h-28 rounded-lg border border-slate-200" />}
         <div className="mt-4"><Btn onClick={submit}>{tr("إرسال التحويل")}</Btn></div>
+      </Card>
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل العمل", "Work History")}</h3>
+        {(() => {
+          const hist = db.imports
+            .map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0 } : null; })
+            .filter(Boolean)
+            .sort((a, b) => (a.date < b.date ? 1 : -1));
+          const isFT = rider.type === "Full Time";
+          if (hist.length === 0) return <p className="text-sm text-slate-400">{t("لا يوجد سجل عمل بعد", "No work history yet")}</p>;
+          return (
+            <div className="overflow-x-auto"><table className="w-full text-sm">
+              <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("الطلبات"), tr("COD"), ...(isFT ? [tr("ساعات الدوام")] : [])].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+              <tbody>
+                {hist.map((h, i) => (
+                  <tr key={i} className="border-b border-slate-50">
+                    <td className="py-2 px-3" dir="ltr">{h.date}</td>
+                    <td className="px-3">{h.orders}</td>
+                    <td className="px-3">{omr(h.cod)}</td>
+                    {isFT && <td className="px-3">{h.hours}</td>}
+                  </tr>
+                ))}
+                <tr className="font-bold bg-slate-50">
+                  <td className="py-2 px-3">{t("الإجمالي", "Total")}</td>
+                  <td className="px-3">{m.orders}</td>
+                  <td className="px-3">{omr(m.codToTransfer)}</td>
+                  {isFT && <td className="px-3">{m.hours} <span className="text-xs font-normal text-slate-500">= {omr(m.hoursPay)}</span></td>}
+                </tr>
+              </tbody>
+            </table></div>
+          );
+        })()}
       </Card>
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3">{tr("سجل التحويلات")}</h3>
@@ -2084,7 +2126,10 @@ function RegistrationModule({ db, save, user }) {
           <Field label={t("الحالة", "Status")}><select className={inputCls} value={statusF} onChange={(e) => setStatusF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{Object.keys(REG_STATUS_LABEL).map((k) => <option key={k} value={k}>{t(REG_STATUS_LABEL[k][0], REG_STATUS_LABEL[k][1])}</option>)}</select></Field>
           <Field label={t("الموظف", "Assignee")}><select className={inputCls} value={assigneeF} onChange={(e) => setAssigneeF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{agents.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           <Field label={t("تاريخ التسجيل", "Date")}><input type="date" className={inputCls} value={dateF} onChange={(e) => setDateF(e.target.value)} /></Field>
-          <div className="flex items-end">{(q || statusF !== "all" || assigneeF !== "all" || dateF) && <Btn kind="ghost" onClick={() => { setQ(""); setStatusF("all"); setAssigneeF("all"); setDateF(""); }}>{t("مسح الفلاتر", "Clear")}</Btn>}</div>
+          <div className="flex items-end gap-2">
+            <Btn kind="ghost" onClick={() => exportExcel(rows.map((r) => ({ المندوب: r.fullName, الهاتف: r.phone, البطاقة: r.idNumber || "", الجنسية: r.nationality || "", الولاية: r.wilaya || "", المركبة: r.vehicleType || "", رخصة: r.hasLicense ? tr("نعم") : tr("لا"), الشركة: r.company ? cLabel(r.company) : "", البنك: r.bankName || "", رقم_الحساب: r.bank || "", سويفت: r.swift || "", الموظف: agentName(r.assignee), الحالة: t(REG_STATUS_LABEL[regStatus(r)][0], REG_STATUS_LABEL[regStatus(r)][1]), التاريخ: r.createdAt })), "Registrations")}><Download size={15} /> Excel ({rows.length})</Btn>
+            {(q || statusF !== "all" || assigneeF !== "all" || dateF) && <Btn kind="ghost" onClick={() => { setQ(""); setStatusF("all"); setAssigneeF("all"); setDateF(""); }}>{t("مسح الفلاتر", "Clear")}</Btn>}
+          </div>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("المندوب", "Driver"), t("الهاتف", "Phone"), t("البطاقة", "ID"), t("الموظف", "Assignee"), t("الحالة", "Status"), t("التقدّم", "Progress"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
