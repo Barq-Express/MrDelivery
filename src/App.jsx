@@ -1518,6 +1518,14 @@ function RiderPortal({ db, riderId, creds, refresh }) {
   const [pwf, setPwf] = useState({ cur: "", nw: "", cf: "" });
   const [pwMsg, setPwMsg] = useState("");
   const m = riderMoney(db, riderId);
+  const [bankForm, setBankForm] = useState({ bankName: rider ? (rider.bankName || "") : "", bank: rider ? (rider.bank || "") : "", swift: rider ? (rider.swift || "") : "", holder: rider ? (rider.holder || "") : "" });
+  const [bankMsg, setBankMsg] = useState("");
+  const [bankBusy, setBankBusy] = useState(false);
+  const saveBank = () => {
+    setBankBusy(true); setBankMsg("");
+    supabase.rpc("rider_update_bank", { p_phone: creds.phone, p_password: creds.password, p_bankname: bankForm.bankName || "", p_bank: bankForm.bank || "", p_swift: bankForm.swift || "", p_holder: bankForm.holder || "" })
+      .then(({ data, error }) => { setBankBusy(false); if (error || !data) return setBankMsg(t("تعذّر الحفظ، حاول مرة أخرى", "Save failed, try again")); setBankMsg(t("✅ تم حفظ بياناتك البنكية", "✅ Bank details saved")); refresh(); });
+  };
   const myTransfers = db.transfers.filter((t) => t.riderId === riderId).sort((a, b) => b.date.localeCompare(a.date));
   const lastRejected = myTransfers.find((t) => t.status === "Rejected");
   const submit = () => {
@@ -1570,6 +1578,19 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         {form.receipt && <img src={form.receipt} alt={tr("إيصال")} className="mt-3 h-28 rounded-lg border border-slate-200" />}
         <div className="mt-4"><Btn onClick={submit}>{tr("إرسال التحويل")}</Btn></div>
       </Card>
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><Banknote size={18} /> {t("بياناتي البنكية", "My Bank Details")}</h3>
+        <p className="text-xs text-slate-500 mb-4">{t("عبّئ بياناتك البنكية بنفسك لضمان صحة التحويلات. أنت مسؤول عن صحتها.", "Fill your own bank details to ensure correct transfers. You are responsible for their accuracy.")}</p>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={bankForm.bankName} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setBankForm({ ...bankForm, bankName: e.target.value, swift: b ? b.swift : bankForm.swift }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
+          <Field label={t("اسم صاحب الحساب", "Account Holder Name")}><input className={inputCls} value={bankForm.holder} onChange={(e) => setBankForm({ ...bankForm, holder: e.target.value })} /></Field>
+          <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} dir="ltr" value={bankForm.bank} onChange={(e) => setBankForm({ ...bankForm, bank: e.target.value })} /></Field>
+          <Field label={t("سويفت كود", "SWIFT Code")}><input className={inputCls} dir="ltr" value={bankForm.swift} onChange={(e) => setBankForm({ ...bankForm, swift: e.target.value })} placeholder={t("يُعبّأ تلقائياً من البنك", "auto-filled from bank")} /></Field>
+        </div>
+        {bankMsg && <p className="text-xs mt-3" style={{ color: bankMsg.charAt(0) === "✅" ? "#0f9d58" : "#c0341d" }}>{bankMsg}</p>}
+        <div className="mt-4"><Btn onClick={saveBank}>{bankBusy ? "..." : t("حفظ البيانات البنكية", "Save Bank Details")}</Btn></div>
+      </Card>
+
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل العمل", "Work History")}</h3>
         {(() => {
