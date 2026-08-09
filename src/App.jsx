@@ -1327,6 +1327,7 @@ function AttendanceTab({ company, db, save }) {
   const hasFile = db.imports.some((im) => im.company === company && im.date === date);
   const presentOn = (rid) => db.imports.some((im) => im.company === company && im.date === date && im.results.some((r) => r.riderId === rid && (r.orders > 0 || r.cod > 0))) || !!db.attendance[rid + ":" + date];
   const excuseOf = (rid) => (db.excuses || {})[rid + ":" + date];
+  const perfOn = (rid) => { for (const im of db.imports) { if (im.company === company && im.date === date) { const rr = im.results.find((x) => x.riderId === rid); if (rr) return { hours: Number(rr.hours) || 0, accept: Number(rr.accept) || 0 }; } } return { hours: 0, accept: 0 }; };
   const [excuseFor, setExcuseFor] = useState(null);
   const [exType, setExType] = useState("sick");
   const [exNote, setExNote] = useState("");
@@ -1351,7 +1352,8 @@ function AttendanceTab({ company, db, save }) {
       || (statusF === "present" && r.present)
       || (statusF === "absent" && !r.present)
       || (statusF === "excused" && !r.present && !!excuseOf(r.id))
-      || (statusF === "unexcused" && !r.present && !excuseOf(r.id)))
+      || (statusF === "unexcused" && !r.present && !excuseOf(r.id))
+      || (statusF === "below" && r.type === "Full Time" && (() => { const p = perfOn(r.id); return (p.accept > 0 && p.accept < ACCEPT_MIN) || (p.hours > 0 && p.hours < HOURS_MIN); })()))
   ));
   const presentCount = base.filter((r) => presentOn(r.id)).length;
 
@@ -1359,7 +1361,7 @@ function AttendanceTab({ company, db, save }) {
     <Card className="p-5">
       <div className="flex items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-2"><CalendarCheck size={18} /> <h3 className="font-bold text-slate-800">{t("الحضور والغياب", "Attendance")} — {cLabel(company)}</h3></div>
-        <Btn kind="ghost" size="sm" onClick={() => exportExcel(rows.map((r) => { const ex = excuseOf(r.id); return { المندوب: r.name, الهاتف: r.phone, ID: r.companyId || "", المنطقة: r.area || "", النوع: r.type, الحالة: r.present ? tr("حاضر") : tr("غايب"), العذر: r.present ? "" : (ex ? excuseLabel(ex.type) : tr("بدون عذر")), ملاحظة_العذر: ex ? (ex.note || "") : "", وقت_الشفت: (r.shiftStart || "") + (r.shiftEnd ? " - " + r.shiftEnd : ""), البنك: r.bankName || "", الحساب: r.bank || "" }; }), "Attendance_" + company + "_" + date)}><Download size={14} /> Excel</Btn>
+        <Btn kind="ghost" size="sm" onClick={() => exportExcel(rows.map((r) => { const ex = excuseOf(r.id); return { المندوب: r.name, الهاتف: r.phone, ID: r.companyId || "", المنطقة: r.area || "", النوع: r.type, الحالة: r.present ? tr("حاضر") : tr("غايب"), العذر: r.present ? "" : (ex ? excuseLabel(ex.type) : tr("بدون عذر")), ملاحظة_العذر: ex ? (ex.note || "") : "", معدل_القبول: r.type === "Full Time" ? perfOn(r.id).accept : "", ساعات_العمل: r.type === "Full Time" ? perfOn(r.id).hours : "", وقت_الشفت: (r.shiftStart || "") + (r.shiftEnd ? " - " + r.shiftEnd : ""), البنك: r.bankName || "", الحساب: r.bank || "" }; }), "Attendance_" + company + "_" + date)}><Download size={14} /> Excel</Btn>
       </div>
 
       <div className="grid md:grid-cols-5 gap-2 mb-4">
@@ -1368,7 +1370,7 @@ function AttendanceTab({ company, db, save }) {
             ? <select className={inputCls} value={date} onChange={(e) => setDate(e.target.value)}>{dates.map((d) => <option key={d} value={d}>{d}</option>)}</select>
             : <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />}
         </Field>
-        <Field label={t("الحالة", "Status")}><select className={inputCls} value={statusF} onChange={(e) => setStatusF(e.target.value)}><option value="all">{t("الكل", "All")}</option><option value="present">{t("حاضر", "Present")}</option><option value="absent">{t("غايب", "Absent")}</option><option value="excused">{t("غايب بعذر", "Absent (excused)")}</option><option value="unexcused">{t("غايب بدون عذر", "Absent (no excuse)")}</option></select></Field>
+        <Field label={t("الحالة", "Status")}><select className={inputCls} value={statusF} onChange={(e) => setStatusF(e.target.value)}><option value="all">{t("الكل", "All")}</option><option value="present">{t("حاضر", "Present")}</option><option value="absent">{t("غايب", "Absent")}</option><option value="excused">{t("غايب بعذر", "Absent (excused)")}</option><option value="unexcused">{t("غايب بدون عذر", "Absent (no excuse)")}</option><option value="below">{t("أداء دون المستوى", "Below target")}</option></select></Field>
         <Field label={t("النوع", "Type")}><select className={inputCls} value={typeF} onChange={(e) => setTypeF(e.target.value)}><option value="all">{t("الكل", "All")}</option><option value="Freelancer">Freelancer</option><option value="Full Time">Full Time</option></select></Field>
         <Field label={t("المنطقة", "Area")}><select className={inputCls} value={areaF} onChange={(e) => setAreaF(e.target.value)}><option value="all">{t("كل المناطق", "All Areas")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select></Field>
         <Field label={t("بحث", "Search")}><input className={inputCls} placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></Field>
@@ -1383,7 +1385,7 @@ function AttendanceTab({ company, db, save }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-            {[tr("المندوب"), "ID", tr("الهاتف"), tr("المنطقة"), tr("النوع"), t("الحالة", "Status"), t("العذر", "Excuse")].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
+            {[tr("المندوب"), "ID", tr("الهاتف"), tr("المنطقة"), tr("النوع"), t("الحالة", "Status"), t("الأداء (فول تايم)", "Performance (FT)"), t("العذر", "Excuse")].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
             {rows.map((r) => (
@@ -1399,13 +1401,21 @@ function AttendanceTab({ company, db, save }) {
                   </button>
                 </td>
                 <td className="px-3">
+                  {r.type === "Full Time" ? (() => { const p = perfOn(r.id); if (!p.hours && !p.accept) return <span className="text-slate-300">—</span>; const hRed = p.hours > 0 && p.hours < HOURS_MIN; const aRed = p.accept > 0 && p.accept < ACCEPT_MIN; return (
+                    <span className="text-xs font-semibold inline-flex gap-2">
+                      <span style={{ color: aRed ? "#c0341d" : "#0f9d58" }} title={t("معدل القبول", "Acceptance")}>{p.accept ? p.accept + "%" : "—"}{aRed ? " 🔴" : ""}</span>
+                      <span style={{ color: hRed ? "#c0341d" : "#0f9d58" }} title={t("ساعات العمل", "Hours")}>{p.hours || "—"}{t("س", "h")}{hRed ? " 🔴" : ""}</span>
+                    </span>
+                  ); })() : <span className="text-slate-300">—</span>}
+                </td>
+                <td className="px-3">
                   {r.present ? <span className="text-slate-300">—</span> : (() => { const ex = excuseOf(r.id); return ex
                     ? <span className="inline-flex items-center gap-2"><Pill color="#d97706">{excuseLabel(ex.type)}</Pill><button onClick={() => openExcuse(r)} className="text-xs text-slate-400">{t("تعديل", "edit")}</button><button onClick={() => removeExcuse(r.id)} className="text-xs text-red-500">✕</button></span>
                     : <button onClick={() => openExcuse(r)} className="text-xs font-semibold px-2 py-1 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }}>+ {t("إضافة عذر", "Add excuse")}</button>; })()}
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">{tr("لا نتائج")}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-slate-400">{tr("لا نتائج")}</td></tr>}
           </tbody>
         </table>
       </div>
