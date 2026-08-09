@@ -2643,6 +2643,7 @@ function sidebarFor(user) {
   if (user.role === "Admin" || user.role === "Operations Manager") {
     items.push({ key: "shifts", label: t("الشفتات (كل الشركات)", "Shifts (All)"), kind: "shifts" });
     items.push({ key: "employees", label: t("الموظفون", "Employees"), kind: "employees" });
+    if (user.role === "Admin") items.push({ key: "hr", label: t("الموارد البشرية", "HR"), kind: "hr" });
     items.push(regItem);
     items.push({ key: "areas", label: t("المناطق", "Areas"), kind: "areas" });
     items.push({ key: "archive", label: t("الأرشيف", "Archive"), kind: "archive" });
