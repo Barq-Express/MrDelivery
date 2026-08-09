@@ -409,6 +409,7 @@ function normalizeDB(db) {
     regStaff: db.regStaff && db.regStaff.length ? db.regStaff : ["أميرة", "منال", "أسامة", "محمد"],
     areas: db.areas || [],
     excuses: db.excuses || {},
+    hr: db.hr || { leaveTypes: HR_LEAVE_DEFAULTS, employees: [], leaveRequests: [], payrollRuns: [] },
   };
 }
 
@@ -2288,6 +2289,348 @@ function AreasWindow({ db, save }) {
   );
 }
 
+/* ============================ HR MODULE (الموارد البشرية) ============================ */
+const HR_LEAVE_DEFAULTS = [
+  { id: "annual", nameAr: "سنوية", ent: 30, paid: true, legal: true, ref: "RD 53/2023 · م.76", active: true },
+  { id: "sick", nameAr: "مرضية", ent: 182, paid: true, legal: true, ref: "RD 53/2023 · م.79", active: true, docs: true },
+  { id: "emergency", nameAr: "طارئة", ent: 6, paid: true, legal: false, ref: "سياسة الشركة", active: true },
+  { id: "maternity", nameAr: "أمومة", ent: 98, paid: true, legal: true, ref: "RD 53/2023 · م.81", active: true, gender: "F" },
+  { id: "paternity", nameAr: "أبوة", ent: 7, paid: true, legal: true, ref: "RD 53/2023 · م.84", active: true, gender: "M" },
+  { id: "bereavement", nameAr: "وفاة", ent: 3, paid: true, legal: true, ref: "RD 53/2023 · م.84", active: true },
+  { id: "hajj", nameAr: "حج", ent: 15, paid: true, legal: true, ref: "RD 53/2023 · م.84", active: true },
+  { id: "unpaid", nameAr: "بدون أجر", ent: 0, paid: false, legal: false, ref: "سياسة الشركة", active: true },
+];
+const hrDaysBetween = (a, b) => Math.max(0, Math.round((new Date(b) - new Date(a)) / 86400000) + 1);
+const curMonthStr = () => todayStr().slice(0, 7);
+
+function HRWindow({ db, save }) {
+  const hr = db.hr || { leaveTypes: HR_LEAVE_DEFAULTS, employees: [], leaveRequests: [], payrollRuns: [] };
+  const setHr = (patch) => save({ ...db, hr: { ...hr, ...patch } });
+  const [tab, setTab] = useState("dashboard");
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(null);
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState({});
+  const [pmonth, setPmonth] = useState(curMonthStr());
+  const [flt, setFlt] = useState({ type: "", status: "" });
+
+  const emp = (id) => hr.employees.find((e) => e.id === id);
+  const nm = (id) => { const e = emp(id); return e ? e.name : id; };
+  const lt = (id) => hr.leaveTypes.find((x) => x.id === id);
+  const ltName = (id) => { const x = lt(id); return x ? x.nameAr : id; };
+  const typesFor = (empId) => { const e = emp(empId); return hr.leaveTypes.filter((x) => x.active && (!x.gender || (e && x.gender === e.gender))); };
+  const balance = (empId, typeId) => {
+    const type = lt(typeId);
+    const reqs = hr.leaveRequests.filter((r) => r.empId === empId && r.typeId === typeId);
+    const used = reqs.filter((r) => r.status === "approved").reduce((s, r) => s + r.days, 0);
+    const pend = reqs.filter((r) => r.status === "pending").reduce((s, r) => s + r.days, 0);
+    const ent = type ? type.ent : 0;
+    return { ent, used, pend, remaining: ent ? ent - used : null };
+  };
+  const onLeaveOn = (d) => hr.leaveRequests.filter((r) => r.status === "approved" && r.from <= d && r.to >= d);
+
+  /* ---- employees ---- */
+  const blankEmp = { name: "", mobile: "", civilId: "", nationality: "OM", gender: "M", jobTitle: "", empType: "fulltime", dept: "Talabat", joinDate: todayStr(), status: "active", basic: "", allowances: "", bankName: "", holder: "", acct: "", iban: "", notes: "" };
+  const saveEmp = () => {
+    if (!form.name) return alert("الاسم مطلوب");
+    const e = { ...form, basic: Number(form.basic) || 0, allowances: Number(form.allowances) || 0, deductions: form.deductions || 0 };
+    if (form.id) setHr({ employees: hr.employees.map((x) => (x.id === form.id ? e : x)) });
+    else setHr({ employees: [...hr.employees, { ...e, id: "H" + uid() }] });
+    setModal(null); setForm({});
+  };
+  const delEmp = (id) => { if (window.confirm("حذف هذا الموظف نهائياً؟")) { setHr({ employees: hr.employees.filter((x) => x.id !== id) }); setSel(null); } };
+
+  /* ---- leave ---- */
+  const submitLeave = () => {
+    const empId = form.empId || sel;
+    if (!empId) return alert("اختر الموظف");
+    const typeId = form.typeId || "annual";
+    const ty = lt(typeId), who = emp(empId);
+    if (ty && ty.gender && who && ty.gender !== who.gender) return alert("هذا النوع لا ينطبق على الموظف");
+    const from = form.from || todayStr(), to = form.to || todayStr();
+    const days = hrDaysBetween(from, to);
+    const b = balance(empId, typeId);
+    if (b.ent && days > b.remaining) return alert("الرصيد لا يكفي (المتبقي " + b.remaining + ")");
+    const r = { id: "LV" + uid(), empId, typeId, from, to, days, reason: form.reason || "", status: "pending", reqDate: todayStr(), history: [] };
+    setHr({ leaveRequests: [r, ...hr.leaveRequests] });
+    setModal(null); setForm({});
+  };
+  const decide = (id, act, reason = "") => {
+    setHr({ leaveRequests: hr.leaveRequests.map((r) => (r.id === id ? { ...r, status: act === "approve" ? "approved" : act === "reject" ? "rejected" : "cancelled", rejectReason: act === "reject" ? reason : r.rejectReason, history: [...(r.history || []), { act, at: todayStr(), reason }] } : r)) });
+  };
+
+  /* ---- payroll ---- */
+  const run = hr.payrollRuns.find((r) => r.month === pmonth);
+  const genPayroll = () => {
+    if (hr.payrollRuns.some((r) => r.month === pmonth)) return;
+    const items = hr.employees.filter((e) => e.status === "active").map((e) => ({ empId: e.id, basic: e.basic, allowances: e.allowances, deductions: e.deductions || 0, status: "draft", payDate: "", ref: "" }));
+    setHr({ payrollRuns: [{ id: "PR" + uid(), month: pmonth, items }, ...hr.payrollRuns] });
+  };
+  const editPay = (empId, field, val) => setHr({ payrollRuns: hr.payrollRuns.map((r) => (r.month !== pmonth ? r : { ...r, items: r.items.map((it) => (it.empId === empId ? { ...it, [field]: field === "ref" || field === "payDate" ? val : Number(val) || 0 } : it)) })) });
+  const setPayStatus = (empId, status) => setHr({ payrollRuns: hr.payrollRuns.map((r) => (r.month !== pmonth ? r : { ...r, items: r.items.map((it) => (it.empId === empId ? { ...it, status, payDate: status === "paid" ? (it.payDate || todayStr()) : it.payDate, ref: status === "paid" ? (it.ref || "TRF-" + pmonth.replace("-", "") + "-" + empId) : it.ref } : it)) })) });
+  const applyUnpaid = (empId) => {
+    const e = emp(empId);
+    const unpaidDays = hr.leaveRequests.filter((r) => r.empId === empId && r.status === "approved" && lt(r.typeId) && !lt(r.typeId).paid && r.from.slice(0, 7) === pmonth).reduce((s, r) => s + r.days, 0);
+    editPay(empId, "deductions", +(e.basic / 30 * unpaidDays).toFixed(3));
+  };
+
+  /* ---- leave types ---- */
+  const saveType = () => {
+    if (form.tid) setHr({ leaveTypes: hr.leaveTypes.map((x) => (x.id === form.tid ? { ...x, nameAr: form.nameAr, ent: Number(form.ent) || 0, paid: !!form.paid, legal: !!form.legal, ref: form.ref, active: !!form.active } : x)) });
+    else setHr({ leaveTypes: [...hr.leaveTypes, { id: "t" + uid(), nameAr: form.nameAr || "نوع", ent: Number(form.ent) || 0, paid: !!form.paid, legal: !!form.legal, ref: form.ref || "سياسة الشركة", active: true }] });
+    setModal(null); setForm({});
+  };
+  const toggleType = (id) => setHr({ leaveTypes: hr.leaveTypes.map((x) => (x.id === id ? { ...x, active: !x.active } : x)) });
+
+  const TABS = [["dashboard", "لوحة HR"], ["employees", "الموظفون"], ["leave", "الإجازات"], ["payroll", "الرواتب"], ["reports", "التقارير"], ["settings", "الإعدادات"]];
+  const badge = (s) => { const m = { approved: "#0f9d58", paid: "#0f9d58", active: "#0f9d58", ready: BRAND.blue, rejected: "#c0341d", cancelled: "#94a3b8", pending: "#d97706", draft: "#94a3b8" }; const L = { approved: "معتمدة", paid: "مدفوعة", active: "نشط", ready: "جاهز للدفع", rejected: "مرفوضة", cancelled: "ملغاة", pending: "معلّقة", draft: "مسودة" }; return <Pill color={m[s] || "#64748b"}>{L[s] || s}</Pill>; };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.navy }}><Users size={18} color="#fff" /></span><h2 className="font-extrabold text-lg text-slate-800">الموارد البشرية</h2></div>
+
+      <div className="flex gap-1 flex-wrap bg-white border border-slate-200 rounded-xl p-1 w-fit">
+        {TABS.map(([k, l]) => <button key={k} onClick={() => { setTab(k); setSel(null); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold" style={{ background: tab === k ? BRAND.navy : "transparent", color: tab === k ? "#fff" : "#475569" }}>{l}</button>)}
+      </div>
+
+      {/* DASHBOARD */}
+      {tab === "dashboard" && (() => {
+        const onl = onLeaveOn(todayStr());
+        const pend = hr.leaveRequests.filter((r) => r.status === "pending");
+        const payTot = run ? run.items.reduce((s, it) => s + (it.basic + it.allowances - it.deductions), 0) : 0;
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white rounded-xl border border-slate-100 p-4"><div className="text-xs text-slate-500">الموظفون</div><div className="font-extrabold text-2xl mt-1">{hr.employees.length}</div></div>
+              <div className="bg-white rounded-xl border border-slate-100 p-4"><div className="text-xs text-slate-500">في إجازة الآن</div><div className="font-extrabold text-2xl mt-1" style={{ color: BRAND.orange }}>{new Set(onl.map((r) => r.empId)).size}</div></div>
+              <div className="bg-white rounded-xl border border-slate-100 p-4"><div className="text-xs text-slate-500">طلبات معلّقة</div><div className="font-extrabold text-2xl mt-1" style={{ color: "#d97706" }}>{pend.length}</div></div>
+              <div className="bg-white rounded-xl border border-slate-100 p-4"><div className="text-xs text-slate-500">رواتب الشهر</div><div className="font-extrabold text-xl mt-1" style={{ color: BRAND.blue }}>{omr(payTot)}</div></div>
+            </div>
+            <Card className="p-4">
+              <h3 className="font-bold text-slate-800 mb-3 text-sm">من في إجازة اليوم · {todayStr()}</h3>
+              {onl.length === 0 ? <p className="text-sm text-slate-400">لا أحد في إجازة اليوم</p> : <div className="space-y-2">{onl.map((r) => <div key={r.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-50"><div><div className="text-sm font-semibold">{nm(r.empId)}</div><div className="text-[11px] text-slate-400">{ltName(r.typeId)} · {r.from} → {r.to}</div></div>{badge("approved")}</div>)}</div>}
+            </Card>
+            {pend.length > 0 && <Card className="p-4"><h3 className="font-bold text-slate-800 mb-3 text-sm">طلبات إجازة معلّقة</h3><div className="space-y-2">{pend.map((r) => <div key={r.id} className="flex items-center justify-between p-2 rounded-lg bg-amber-50"><span className="text-sm">{nm(r.empId)} · {ltName(r.typeId)} · {r.days} يوم</span><div className="flex gap-1"><button onClick={() => decide(r.id, "approve")} className="text-xs px-2 py-1 rounded-lg text-white" style={{ background: "#0f9d58" }}>اعتماد</button><button onClick={() => { setForm({ rejId: r.id }); setModal("reject"); }} className="text-xs px-2 py-1 rounded-lg text-white" style={{ background: "#c0341d" }}>رفض</button></div></div>)}</div></Card>}
+          </div>
+        );
+      })()}
+
+      {/* EMPLOYEES */}
+      {tab === "employees" && !sel && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="relative"><Search size={16} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-64" placeholder="بحث بالاسم / الرقم / الجوال" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <div className="flex gap-2">
+              <Btn kind="ghost" onClick={() => exportExcel(hr.employees.map((e) => ({ الاسم: e.name, الجوال: e.mobile, المدني: e.civilId, الجنسية: e.nationality, المسمى: e.jobTitle, النوع: e.empType, المشروع: e.dept, الحالة: e.status, الأساسي: e.basic, البدلات: e.allowances, البنك: e.bankName, الآيبان: e.iban })), "HR_Employees")}><Download size={15} /> Excel</Btn>
+              <Btn onClick={() => { setForm(blankEmp); setModal("emp"); }}><Plus size={16} /> إضافة موظف</Btn>
+            </div>
+          </div>
+          <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{["الاسم", "الجوال", "المشروع", "النوع", "الحالة", "الأساسي", ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>
+              {hr.employees.filter((e) => e.name.includes(q) || (e.mobile || "").includes(q) || (e.civilId || "").includes(q)).map((e) => (
+                <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="py-3 px-3"><button onClick={() => setSel(e.id)} className="text-right"><div className="font-semibold text-slate-800">{e.name}</div><div className="text-[11px] text-slate-400">{e.jobTitle}</div></button></td>
+                  <td className="px-3 text-slate-600" dir="ltr">{e.mobile}</td>
+                  <td className="px-3 text-slate-600">{e.dept}</td>
+                  <td className="px-3 text-slate-600">{e.empType}</td>
+                  <td className="px-3">{badge(e.status)}</td>
+                  <td className="px-3">{omr(e.basic)}</td>
+                  <td className="px-3"><button onClick={() => { setForm({ ...e }); setModal("emp"); }} className="text-slate-400 hover:text-slate-700"><Pencil size={15} /></button></td>
+                </tr>
+              ))}
+              {hr.employees.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">لا يوجد موظفون — أضف أول موظف</td></tr>}
+            </tbody>
+          </table></div></Card>
+        </div>
+      )}
+
+      {/* EMPLOYEE PROFILE */}
+      {tab === "employees" && sel && (() => {
+        const e = emp(sel); if (!e) { setSel(null); return null; }
+        const reqs = hr.leaveRequests.filter((r) => r.empId === e.id);
+        const salHist = hr.payrollRuns.filter((r) => r.items.some((it) => it.empId === e.id)).map((r) => ({ month: r.month, it: r.items.find((it) => it.empId === e.id) }));
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between"><button onClick={() => setSel(null)} className="text-sm text-slate-500">← رجوع</button><div className="flex gap-2"><Btn kind="ghost" onClick={() => { setForm({ ...e }); setModal("emp"); }}><Pencil size={14} /> تعديل</Btn><Btn kind="ghost" className="!text-red-600" onClick={() => delEmp(e.id)}><Trash2 size={14} /> حذف</Btn></div></div>
+            <Card className="p-5">
+              <div className="flex items-center gap-4 mb-4"><div className="h-14 w-14 rounded-2xl grid place-items-center text-xl font-bold text-white" style={{ background: BRAND.navy }}>{e.name.slice(0, 1)}</div><div><div className="text-lg font-bold text-slate-800">{e.name}</div><div className="text-xs text-slate-400">{e.jobTitle} · {e.dept}</div></div><div className="mr-auto">{badge(e.status)}</div></div>
+              <div className="grid md:grid-cols-3 gap-3 text-sm">
+                <div><span className="text-xs text-slate-400">الجوال</span><div dir="ltr">{e.mobile || "—"}</div></div>
+                <div><span className="text-xs text-slate-400">المدني</span><div dir="ltr">{e.civilId || "—"}</div></div>
+                <div><span className="text-xs text-slate-400">الجنسية</span><div>{e.nationality}</div></div>
+                <div><span className="text-xs text-slate-400">تاريخ الالتحاق</span><div dir="ltr">{e.joinDate}</div></div>
+                <div><span className="text-xs text-slate-400">الأساسي</span><div>{omr(e.basic)}</div></div>
+                <div><span className="text-xs text-slate-400">البدلات</span><div>{omr(e.allowances)}</div></div>
+                <div><span className="text-xs text-slate-400">البنك</span><div>{e.bankName || "—"}</div></div>
+                <div><span className="text-xs text-slate-400">الآيبان</span><div dir="ltr">{e.iban || "—"}</div></div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-2"><h3 className="font-bold text-slate-800 text-sm">ملخص الإجازات</h3><Btn size="sm" onClick={() => { setForm({ empId: e.id, typeId: "annual", from: todayStr(), to: todayStr() }); setModal("leave"); }}><Plus size={14} /> طلب إجازة</Btn></div>
+              <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{["النوع", "المستحق", "المستخدم", "معلّقة", "المتبقي"].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+                <tbody>{typesFor(e.id).map((ty) => { const b = balance(e.id, ty.id); return <tr key={ty.id} className="border-b border-slate-50"><td className="py-2 px-3">{ty.nameAr}</td><td className="px-3">{b.ent || "—"}</td><td className="px-3">{b.used}</td><td className="px-3">{b.pend}</td><td className="px-3 font-semibold">{b.remaining ?? "—"}</td></tr>; })}</tbody></table></div>
+            </Card>
+            {salHist.length > 0 && <Card className="p-4"><h3 className="font-bold text-slate-800 text-sm mb-2">سجل الرواتب</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{["الشهر", "الأساسي", "البدلات", "الاستقطاعات", "الصافي", "الحالة"].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead><tbody>{salHist.map((h) => <tr key={h.month} className="border-b border-slate-50"><td className="py-2 px-3" dir="ltr">{h.month}</td><td className="px-3">{omr(h.it.basic)}</td><td className="px-3">{omr(h.it.allowances)}</td><td className="px-3">{omr(h.it.deductions)}</td><td className="px-3 font-semibold">{omr(h.it.basic + h.it.allowances - h.it.deductions)}</td><td className="px-3">{badge(h.it.status)}</td></tr>)}</tbody></table></div></Card>}
+          </div>
+        );
+      })()}
+
+      {/* LEAVE */}
+      {tab === "leave" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex gap-2">
+              <select value={flt.type} onChange={(e) => setFlt({ ...flt, type: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">كل الأنواع</option>{hr.leaveTypes.map((x) => <option key={x.id} value={x.id}>{x.nameAr}</option>)}</select>
+              <select value={flt.status} onChange={(e) => setFlt({ ...flt, status: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">كل الحالات</option>{["pending", "approved", "rejected", "cancelled"].map((s) => <option key={s} value={s}>{s}</option>)}</select>
+            </div>
+            <Btn onClick={() => { setForm({ typeId: "annual", from: todayStr(), to: todayStr() }); setModal("leave"); }}><Plus size={16} /> طلب إجازة</Btn>
+          </div>
+          <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{["الموظف", "النوع", "من", "إلى", "الأيام", "الحالة", ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>
+              {hr.leaveRequests.filter((r) => (!flt.type || r.typeId === flt.type) && (!flt.status || r.status === flt.status)).map((r) => (
+                <tr key={r.id} className="border-b border-slate-50">
+                  <td className="py-3 px-3 font-medium">{nm(r.empId)}{r.status === "rejected" && r.rejectReason && <div className="text-[10px] text-red-600">سبب الرفض: {r.rejectReason}</div>}</td>
+                  <td className="px-3">{ltName(r.typeId)}</td><td className="px-3" dir="ltr">{r.from}</td><td className="px-3" dir="ltr">{r.to}</td><td className="px-3">{r.days}</td><td className="px-3">{badge(r.status)}</td>
+                  <td className="px-3">{r.status === "pending" ? <div className="flex gap-1"><button onClick={() => decide(r.id, "approve")} className="h-7 w-7 grid place-items-center rounded-lg text-white" style={{ background: "#0f9d58" }}><CheckCircle2 size={14} /></button><button onClick={() => { setForm({ rejId: r.id }); setModal("reject"); }} className="h-7 w-7 grid place-items-center rounded-lg text-white" style={{ background: "#c0341d" }}><XCircle size={14} /></button></div> : r.status === "approved" ? <button onClick={() => decide(r.id, "cancel")} className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 text-slate-500">إلغاء</button> : <span className="text-slate-300">—</span>}</td>
+                </tr>
+              ))}
+              {hr.leaveRequests.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">لا توجد طلبات</td></tr>}
+            </tbody>
+          </table></div></Card>
+        </div>
+      )}
+
+      {/* PAYROLL */}
+      {tab === "payroll" && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="month" value={pmonth} onChange={(e) => setPmonth(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            {!run && <Btn onClick={genPayroll}><Wallet size={15} /> توليد رواتب الشهر</Btn>}
+            {run && <Btn kind="ghost" onClick={() => exportExcel(run.items.map((it) => { const e = emp(it.empId); return { الموظف: nm(it.empId), الأساسي: it.basic, البدلات: it.allowances, الاستقطاعات: it.deductions, الصافي: it.basic + it.allowances - it.deductions, الحالة: it.status, صاحب_الحساب: e ? e.holder : "", البنك: e ? e.bankName : "", الآيبان: e ? e.iban : "" }; }), "Payroll_" + pmonth)}><Download size={15} /> تصدير</Btn>}
+          </div>
+          {!run ? <Card className="p-6"><p className="text-center text-slate-400 text-sm">لا يوجد كشف لهذا الشهر — اضغط توليد.</p></Card> : (
+            <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+              <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{["الموظف", "الأساسي", "البدلات", "الاستقطاعات", "الصافي", "الحالة", ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
+              <tbody>
+                {run.items.map((it) => {
+                  const editable = it.status === "draft";
+                  const unpaidDays = hr.leaveRequests.filter((r) => r.empId === it.empId && r.status === "approved" && lt(r.typeId) && !lt(r.typeId).paid && r.from.slice(0, 7) === pmonth).reduce((s, r) => s + r.days, 0);
+                  return (
+                    <tr key={it.empId} className="border-b border-slate-50">
+                      <td className="py-3 px-3 font-medium">{nm(it.empId)}{unpaidDays > 0 && <div className="text-[10px] text-red-600">إجازة بدون أجر: {unpaidDays} يوم · <button onClick={() => applyUnpaid(it.empId)} className="underline">إضافة كاستقطاع</button></div>}</td>
+                      <td className="px-3">{editable ? <input value={it.basic} onChange={(e) => editPay(it.empId, "basic", e.target.value)} className="w-20 rounded border border-slate-200 px-2 py-1" /> : omr(it.basic)}</td>
+                      <td className="px-3">{editable ? <input value={it.allowances} onChange={(e) => editPay(it.empId, "allowances", e.target.value)} className="w-20 rounded border border-slate-200 px-2 py-1" /> : omr(it.allowances)}</td>
+                      <td className="px-3">{editable ? <input value={it.deductions} onChange={(e) => editPay(it.empId, "deductions", e.target.value)} className="w-20 rounded border border-slate-200 px-2 py-1" /> : omr(it.deductions)}</td>
+                      <td className="px-3 font-bold" style={{ color: BRAND.navy }}>{omr(it.basic + it.allowances - it.deductions)}</td>
+                      <td className="px-3">{badge(it.status)}</td>
+                      <td className="px-3"><div className="flex gap-1">
+                        {it.status === "draft" && <button onClick={() => setPayStatus(it.empId, "approved")} className="text-[11px] px-2 py-1 rounded-lg text-white" style={{ background: BRAND.navy }}>اعتماد</button>}
+                        {it.status === "approved" && <button onClick={() => setPayStatus(it.empId, "ready")} className="text-[11px] px-2 py-1 rounded-lg text-white" style={{ background: BRAND.blue }}>جاهز</button>}
+                        {it.status === "ready" && <button onClick={() => setPayStatus(it.empId, "paid")} className="text-[11px] px-2 py-1 rounded-lg text-white" style={{ background: "#0f9d58" }}>تعليم مدفوع</button>}
+                        {it.status === "paid" && <span className="text-[11px] text-slate-400" dir="ltr">{it.payDate}</span>}
+                      </div></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table></div></Card>
+          )}
+        </div>
+      )}
+
+      {/* REPORTS */}
+      {tab === "reports" && (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-500">صدّر التقارير كملفات Excel.</p>
+          <div className="grid md:grid-cols-2 gap-2">
+            <Btn kind="ghost" onClick={() => exportExcel(hr.employees.map((e) => ({ الاسم: e.name, الجوال: e.mobile, المشروع: e.dept, النوع: e.empType, الحالة: e.status, الأساسي: e.basic })), "HR_EmployeeList")}><Download size={15} /> قائمة الموظفين</Btn>
+            <Btn kind="ghost" onClick={() => exportExcel(hr.leaveRequests.map((r) => ({ الموظف: nm(r.empId), النوع: ltName(r.typeId), من: r.from, إلى: r.to, الأيام: r.days, الحالة: r.status })), "HR_LeaveHistory")}><Download size={15} /> سجل الإجازات</Btn>
+            <Btn kind="ghost" onClick={() => exportExcel(hr.employees.map((e) => { const b = balance(e.id, "annual"); return { الاسم: e.name, المستحق: b.ent, المستخدم: b.used, المتبقي: b.remaining }; }), "HR_AnnualBalances")}><Download size={15} /> أرصدة الإجازة السنوية</Btn>
+            <Btn kind="ghost" onClick={() => { const r = hr.payrollRuns.find((x) => x.month === pmonth); exportExcel(r ? r.items.map((it) => { const e = emp(it.empId); return { صاحب_الحساب: e ? e.holder : "", البنك: e ? e.bankName : "", الآيبان: e ? e.iban : "", الصافي: it.basic + it.allowances - it.deductions }; }) : [], "HR_BankPayment_" + pmonth); }}><Download size={15} /> تقرير الدفع البنكي ({pmonth})</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS */}
+      {tab === "settings" && (
+        <div className="space-y-3">
+          <div className="flex justify-end"><Btn onClick={() => { setForm({ paid: true, legal: false, active: true, ent: 0 }); setModal("ltype"); }}><Plus size={16} /> إضافة نوع</Btn></div>
+          <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{["نوع الإجازة", "المستحق", "مدفوعة", "المرجع", "مفعّلة", ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>{hr.leaveTypes.map((x) => (
+              <tr key={x.id} className="border-b border-slate-50">
+                <td className="py-3 px-3 font-medium">{x.nameAr} {x.ref && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: (x.legal ? BRAND.blue : BRAND.orange) + "18", color: x.legal ? BRAND.blue : BRAND.orange }}>{x.legal ? "قانوني" : "سياسة"}</span>}</td>
+                <td className="px-3">{x.ent || "—"}</td><td className="px-3">{x.paid ? "✓" : "✗"}</td><td className="px-3 text-[11px] text-slate-500">{x.ref}</td>
+                <td className="px-3"><button onClick={() => toggleType(x.id)} className="text-[11px] px-2 py-1 rounded-full" style={{ background: x.active ? "#0f9d5822" : "#94a3b822", color: x.active ? "#0f9d58" : "#64748b" }}>{x.active ? "ON" : "OFF"}</button></td>
+                <td className="px-3"><button onClick={() => { setForm({ tid: x.id, ...x }); setModal("ltype"); }} className="text-xs px-2 py-1 rounded-lg border border-slate-200">تعديل</button></td>
+              </tr>
+            ))}</tbody>
+          </table></div></Card>
+          <p className="text-[11px] text-slate-500">المستحقات القانونية مصدرها المرسوم 53/2023 وقابلة للتعديل. أي نوع بلا مرجع قانوني يُعامل كسياسة شركة.</p>
+        </div>
+      )}
+
+      {/* MODALS */}
+      <Modal open={modal === "emp"} onClose={() => { setModal(null); setForm({}); }} title={form.id ? "تعديل موظف" : "إضافة موظف"} wide>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label="الاسم"><input className={inputCls} value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="الجوال"><input className={inputCls} dir="ltr" value={form.mobile || ""} onChange={(e) => setForm({ ...form, mobile: e.target.value })} /></Field>
+          <Field label="الرقم المدني"><input className={inputCls} dir="ltr" value={form.civilId || ""} onChange={(e) => setForm({ ...form, civilId: e.target.value })} /></Field>
+          <Field label="الجنسية"><input className={inputCls} value={form.nationality || ""} onChange={(e) => setForm({ ...form, nationality: e.target.value })} /></Field>
+          <Field label="الجنس"><select className={inputCls} value={form.gender || "M"} onChange={(e) => setForm({ ...form, gender: e.target.value })}><option value="M">ذكر</option><option value="F">أنثى</option></select></Field>
+          <Field label="المشروع"><select className={inputCls} value={form.dept || "Talabat"} onChange={(e) => setForm({ ...form, dept: e.target.value })}>{["Talabat", "Snoonu", "Aramex", "SmartBox", "Office"].map((d) => <option key={d} value={d}>{d}</option>)}</select></Field>
+          <Field label="المسمى الوظيفي"><input className={inputCls} value={form.jobTitle || ""} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} /></Field>
+          <Field label="النوع"><select className={inputCls} value={form.empType || "fulltime"} onChange={(e) => setForm({ ...form, empType: e.target.value })}><option value="fulltime">دوام كامل</option><option value="freelancer">فريلانسر</option><option value="undertraining">تحت التدريب</option></select></Field>
+          <Field label="تاريخ الالتحاق"><input type="date" className={inputCls} value={form.joinDate || todayStr()} onChange={(e) => setForm({ ...form, joinDate: e.target.value })} /></Field>
+          <Field label="الحالة"><select className={inputCls} value={form.status || "active"} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="active">نشط</option><option value="onleave">في إجازة</option><option value="resigned">مستقيل</option><option value="terminated">منتهي</option><option value="inactive">غير نشط</option></select></Field>
+          <Field label="الراتب الأساسي"><input type="number" className={inputCls} dir="ltr" value={form.basic || ""} onChange={(e) => setForm({ ...form, basic: e.target.value })} /></Field>
+          <Field label="البدلات"><input type="number" className={inputCls} dir="ltr" value={form.allowances || ""} onChange={(e) => setForm({ ...form, allowances: e.target.value })} /></Field>
+          <div className="md:col-span-2 border-t border-slate-100 pt-2 text-xs font-semibold text-slate-500">بيانات البنك</div>
+          <Field label="اسم البنك"><select className={inputCls} value={form.bankName || ""} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setForm({ ...form, bankName: e.target.value, swift: b ? b.swift : form.swift }); }}><option value="">— اختر —</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
+          <Field label="اسم صاحب الحساب"><input className={inputCls} value={form.holder || ""} onChange={(e) => setForm({ ...form, holder: e.target.value })} /></Field>
+          <Field label="رقم الحساب"><input className={inputCls} dir="ltr" value={form.acct || ""} onChange={(e) => setForm({ ...form, acct: e.target.value })} /></Field>
+          <Field label="الآيبان"><input className={inputCls} dir="ltr" value={form.iban || ""} onChange={(e) => setForm({ ...form, iban: e.target.value })} /></Field>
+        </div>
+        <div className="flex justify-end gap-2 mt-4"><Btn kind="ghost" onClick={() => { setModal(null); setForm({}); }}>إلغاء</Btn><Btn onClick={saveEmp}>حفظ</Btn></div>
+      </Modal>
+
+      <Modal open={modal === "leave"} onClose={() => { setModal(null); setForm({}); }} title="طلب إجازة">
+        <div className="space-y-3">
+          {!sel && !form.empId && <Field label="الموظف"><select className={inputCls} value={form.empId || ""} onChange={(e) => setForm({ ...form, empId: e.target.value })}><option value="">— اختر —</option>{hr.employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>}
+          <Field label="نوع الإجازة"><select className={inputCls} value={form.typeId || "annual"} onChange={(e) => setForm({ ...form, typeId: e.target.value })}>{typesFor(form.empId || sel).map((x) => <option key={x.id} value={x.id}>{x.nameAr}</option>)}</select></Field>
+          <div className="text-xs text-slate-500">المتبقي: <b>{balance(form.empId || sel, form.typeId || "annual").remaining ?? "—"}</b></div>
+          <div className="grid grid-cols-2 gap-3"><Field label="من"><input type="date" className={inputCls} value={form.from || todayStr()} onChange={(e) => setForm({ ...form, from: e.target.value })} /></Field><Field label="إلى"><input type="date" className={inputCls} value={form.to || todayStr()} onChange={(e) => setForm({ ...form, to: e.target.value })} /></Field></div>
+          <Field label="السبب"><input className={inputCls} value={form.reason || ""} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
+          <div className="text-xs text-slate-500">الأيام: <b>{hrDaysBetween(form.from || todayStr(), form.to || todayStr())}</b></div>
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => { setModal(null); setForm({}); }}>إلغاء</Btn><Btn onClick={submitLeave}>إرسال</Btn></div>
+        </div>
+      </Modal>
+
+      <Modal open={modal === "reject"} onClose={() => { setModal(null); setForm({}); }} title="رفض الإجازة">
+        <div className="space-y-3">
+          <Field label="سبب الرفض (إجباري)"><textarea className={inputCls} rows={3} value={form.rejReason || ""} onChange={(e) => setForm({ ...form, rejReason: e.target.value })} placeholder="مثال: لا يوجد رصيد كافٍ / تعارض مع الجدول" /></Field>
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => { setModal(null); setForm({}); }}>إلغاء</Btn><Btn className="!bg-red-600" onClick={() => { if (!(form.rejReason || "").trim()) return alert("سبب الرفض مطلوب"); decide(form.rejId, "reject", form.rejReason.trim()); setModal(null); setForm({}); }}>تأكيد الرفض</Btn></div>
+        </div>
+      </Modal>
+
+      <Modal open={modal === "ltype"} onClose={() => { setModal(null); setForm({}); }} title="نوع إجازة">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="الاسم"><input className={inputCls} value={form.nameAr || ""} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} /></Field>
+          <Field label="المستحق (أيام)"><input type="number" className={inputCls} dir="ltr" value={form.ent ?? ""} onChange={(e) => setForm({ ...form, ent: e.target.value })} /></Field>
+          <Field label="المرجع"><input className={inputCls} value={form.ref || ""} onChange={(e) => setForm({ ...form, ref: e.target.value })} /></Field>
+          <div className="flex items-end gap-3">
+            <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={!!form.paid} onChange={(e) => setForm({ ...form, paid: e.target.checked })} /> مدفوعة</label>
+            <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={!!form.legal} onChange={(e) => setForm({ ...form, legal: e.target.checked })} /> قانوني</label>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-4"><Btn kind="ghost" onClick={() => { setModal(null); setForm({}); }}>إلغاء</Btn><Btn onClick={saveType}>حفظ</Btn></div>
+      </Modal>
+    </div>
+  );
+}
+
 function sidebarFor(user) {
   const regItem = { key: "registration", label: t("تسجيل المناديب", "Registration"), kind: "registration" };
   if (user.role === "Supervisor") {
@@ -2310,7 +2653,7 @@ function sidebarFor(user) {
   }
   return items;
 }
-const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, areas: MapPin, archive: Trash2 };
+const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, areas: MapPin, hr: Users, archive: Trash2 };
 
 const REG_LINK_FOR = { "Snoonu": "snoonu-tDKVbKhZ", "Talabat": "talabat-BhM5lYFt", "Aramex": "aramex-f_i83gxJ" };
 const REG_LINKS = { "snoonu-tDKVbKhZ": "Snoonu", "talabat-BhM5lYFt": "Talabat", "aramex-f_i83gxJ": "Aramex" };
@@ -2542,6 +2885,7 @@ export default function App() {
     if (activeItem.kind === "allriders") return <Riders db={db} save={save} company={null} user={user} />;
     if (activeItem.kind === "shifts") return <ShiftsWindow db={db} save={save} />;
     if (activeItem.kind === "employees") return <Employees db={db} save={save} user={user} />;
+    if (activeItem.kind === "hr" && user.role === "Admin") return <HRWindow db={db} save={save} />;
     if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} user={user} />;
     if (activeItem.kind === "areas") return <AreasWindow db={db} save={save} />;
     if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
