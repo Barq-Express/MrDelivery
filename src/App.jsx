@@ -20,7 +20,9 @@ const LOGO_MARK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAABFCAYAAAC
 const NO_WORK_DAYS = 7;
 
 const COMPANIES = ["Talabat", "Snoonu", "Aramex"];
-const HOUR_RATE = 1.77; // قيمة ساعة الدوام للفول تايم (ريال)
+const HOUR_RATE = 2.41; // قيمة ساعة الدوام للفول تايم (ريال)
+const ACCEPT_MIN = 90; // الحد الأدنى لمعدل القبول %
+const HOURS_MIN = 8;   // الحد الأدنى للساعات النشطة يومياً
 const EXCUSE_TYPES = [["sick", "إجازة مرضية", "Sick Leave"], ["normal", "إجازة اعتيادية", "Leave"], ["emergency", "ظرف طارئ", "Emergency"], ["other", "أخرى", "Other"]];
 const excuseLabel = (k) => { const e = EXCUSE_TYPES.find((x) => x[0] === k); return e ? t(e[1], e[2]) : k; };
 const BANKS = [
@@ -539,7 +541,7 @@ function ExcelImporter({ company, riders, onApply }) {
   const [sheetDate, setSheetDate] = useState(todayStr());
   const [headers, setHeaders] = useState(null);
   const [rows, setRows] = useState([]);
-  const [map, setMap] = useState({ id: 0, key: 1, orders: 3, cod: 4, due: 5, hours: 6 });
+  const [map, setMap] = useState({ id: 0, key: 1, orders: 3, cod: 4, due: 5, hours: 6, accept: 7 });
   const [edits, setEdits] = useState({});
   const [fileName, setFileName] = useState("");
   const fileRef = useRef();
@@ -575,6 +577,7 @@ function ExcelImporter({ company, riders, onApply }) {
         cod: guess(hs, ["cod", "cash", tr("نقد"), "collected", tr("تحصيل")]),
         due: guess(hs, ["transfer", tr("تحويل"), "due", "payable", tr("مستحق")]),
         hours: guess(hs, ["hour", "ساعات", "ساعة", "hours", "دوام"]),
+        accept: guess(hs, ["accept", "قبول", "acceptance", "rate", "معدل"]),
       });
     });
   };
@@ -586,8 +589,9 @@ function ExcelImporter({ company, riders, onApply }) {
       const orders = Number(valOf(r, i, "orders")) || 0;
       const cod = Number(valOf(r, i, "cod")) || 0;
       const hours = Number(valOf(r, i, "hours")) || 0;
+      const accept = Number(valOf(r, i, "accept")) || 0;
       const transferDue = isTalabat ? (Number(r[map.due]) || cod) : cod;
-      results.push({ riderId: rider ? rider.id : null, name: rider ? rider.name : String(r[map.key] || r[map.id]), matched: !!rider, orders, cod, hours, transferDue });
+      results.push({ riderId: rider ? rider.id : null, name: rider ? rider.name : String(r[map.key] || r[map.id]), matched: !!rider, orders, cod, hours, accept, transferDue });
       if (rider && (orders > 0 || cod > 0 || hours > 0)) matched.add(rider.id); // worked if orders/COD/hours
     });
     const notWorked = riders.filter((r) => r.company === company && r.status === "Active" && !matched.has(r.id)).map((r) => r.id);
@@ -598,10 +602,11 @@ function ExcelImporter({ company, riders, onApply }) {
 
   const downloadTemplate = () => {
     const rs = riders.filter((r) => r.company === company);
-    const header = ["الايدي / ID", "الهاتف / Phone", "الاسم / Name", "النوع / Type", "الطلبات / Orders", "COD", "ساعات الدوام / Hours"];
-    const body = rs.map((r) => [r.companyId || "", r.phone, r.name, (r.type === "Full Time" ? "Full Time" : "Freelancer"), "", "", (r.type === "Full Time" ? "" : "—")]);
+    const header = ["الايدي / ID", "الهاتف / Phone", "الاسم / Name", "النوع / Type", "الطلبات / Orders", "COD", "ساعات الدوام / Hours", "معدل القبول % / Acceptance"];
+    const ftMark = (r) => (r.type === "Full Time" ? "" : "—");
+    const body = rs.map((r) => [r.companyId || "", r.phone, r.name, (r.type === "Full Time" ? "Full Time" : "Freelancer"), "", "", ftMark(r), ftMark(r)]);
     const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-    ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }];
+    ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 18 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "template");
     XLSX.writeFile(wb, "MrDelivery-" + company + "-" + todayStr() + ".xlsx");
@@ -629,12 +634,13 @@ function ExcelImporter({ company, riders, onApply }) {
             <Field label={tr("مبلغ COD")}><select className={inputCls} value={map.cod} onChange={(e) => setMap({ ...map, cod: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
             {isTalabat && <Field label={tr("المطلوب تحويله")}><select className={inputCls} value={map.due} onChange={(e) => setMap({ ...map, due: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>}
             <Field label={t("ساعات الدوام (فول تايم)", "Working Hours (Full Time)")}><select className={inputCls} value={map.hours} onChange={(e) => setMap({ ...map, hours: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
+            <Field label={t("معدل القبول % (فول تايم)", "Acceptance % (Full Time)")}><select className={inputCls} value={map.accept} onChange={(e) => setMap({ ...map, accept: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
           </div>
 
           <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden">
             <div className="px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-600">{t("راجع وعدّل قبل الاعتماد — الطلبات و COD قابلة للتعديل", "Review & edit before applying — Orders and COD are editable")}</div>
             <div className="max-h-72 overflow-auto"><table className="w-full text-xs">
-              <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), "ID", tr("عدد الطلبات"), tr("مبلغ COD"), t("ساعات", "Hours"), ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+              <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), "ID", tr("عدد الطلبات"), tr("مبلغ COD"), t("ساعات", "Hours"), t("قبول %", "Accept %"), ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
               <tbody>
                 {rows.slice(0, 300).map((r, i) => {
                   const rider = matchRider(r);
@@ -644,7 +650,8 @@ function ExcelImporter({ company, riders, onApply }) {
                       <td className="px-2 text-slate-500" dir="ltr">{String(r[map.id] || "—")}</td>
                       <td className="px-2"><input type="number" className="w-20 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "orders")} onChange={(e) => setVal(i, "orders", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="0.001" className="w-24 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "cod")} onChange={(e) => setVal(i, "cod", e.target.value)} /></td>
-                      <td className="px-2"><input type="number" step="0.5" className="w-16 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "hours")} onChange={(e) => setVal(i, "hours", e.target.value)} /></td>
+                      <td className="px-2"><input type="number" step="0.5" className="w-16 rounded border px-2 py-1" style={{ borderColor: (rider && rider.type === "Full Time" && Number(valOf(r, i, "hours")) > 0 && Number(valOf(r, i, "hours")) < HOURS_MIN) ? "#c0341d" : "#e2e8f0", color: (rider && rider.type === "Full Time" && Number(valOf(r, i, "hours")) > 0 && Number(valOf(r, i, "hours")) < HOURS_MIN) ? "#c0341d" : "inherit" }} value={valOf(r, i, "hours")} onChange={(e) => setVal(i, "hours", e.target.value)} /></td>
+                      <td className="px-2"><input type="number" step="1" className="w-16 rounded border px-2 py-1" style={{ borderColor: (rider && rider.type === "Full Time" && Number(valOf(r, i, "accept")) > 0 && Number(valOf(r, i, "accept")) < ACCEPT_MIN) ? "#c0341d" : "#e2e8f0", color: (rider && rider.type === "Full Time" && Number(valOf(r, i, "accept")) > 0 && Number(valOf(r, i, "accept")) < ACCEPT_MIN) ? "#c0341d" : "inherit" }} value={valOf(r, i, "accept")} onChange={(e) => setVal(i, "accept", e.target.value)} /></td>
                       <td className="px-2">{rider ? <span style={{ color: "#0f9d58" }}>✓</span> : <span style={{ color: "#c0341d" }}>{tr("غير مسجل")}</span>}</td>
                     </tr>
                   );
@@ -1082,9 +1089,9 @@ function OrdersTab({ company, db, save }) {
   const setRow = (i, which, v) => setEditImp((e) => ({ ...e, results: e.results.map((r, idx) => (idx === i ? { ...r, [which]: v } : r)) }));
   const saveImport = () => {
     const results = editImp.results.map((r) => {
-      const orders = Number(r.orders) || 0; const cod = Number(r.cod) || 0; const hours = Number(r.hours) || 0;
+      const orders = Number(r.orders) || 0; const cod = Number(r.cod) || 0; const hours = Number(r.hours) || 0; const accept = Number(r.accept) || 0;
       const transferDue = company === "Talabat" ? (Number(r.transferDue) || cod) : cod;
-      return { ...r, orders, cod, hours, transferDue };
+      return { ...r, orders, cod, hours, accept, transferDue };
     });
     const worked = new Set(results.filter((r) => r.riderId && (r.orders > 0 || r.cod > 0)).map((r) => r.riderId));
     const notWorkedIds = db.riders.filter((r) => r.company === company && r.status === "Active" && !worked.has(r.id)).map((r) => r.id);
@@ -1156,7 +1163,7 @@ function OrdersTab({ company, db, save }) {
             <div className="max-w-xs"><Field label={t("تاريخ الشيت", "Sheet Date")}><input type="date" className={inputCls} value={editImp.date} onChange={(e) => setEditImp({ ...editImp, date: e.target.value })} /></Field></div>
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <div className="max-h-80 overflow-auto"><table className="w-full text-xs">
-                <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), tr("عدد الطلبات"), tr("مبلغ COD"), t("ساعات", "Hours")].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+                <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("المندوب"), tr("عدد الطلبات"), tr("مبلغ COD"), t("ساعات", "Hours"), t("قبول %", "Accept %")].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
                 <tbody>
                   {editImp.results.map((r, i) => (
                     <tr key={i} className="border-b border-slate-50">
@@ -1164,6 +1171,7 @@ function OrdersTab({ company, db, save }) {
                       <td className="px-2"><input type="number" className="w-20 rounded border border-slate-200 px-2 py-1" value={r.orders} onChange={(e) => setRow(i, "orders", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="0.001" className="w-24 rounded border border-slate-200 px-2 py-1" value={r.cod} onChange={(e) => setRow(i, "cod", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="0.5" className="w-16 rounded border border-slate-200 px-2 py-1" value={r.hours || ""} onChange={(e) => setRow(i, "hours", e.target.value)} /></td>
+                      <td className="px-2"><input type="number" step="1" className="w-16 rounded border border-slate-200 px-2 py-1" value={r.accept || ""} onChange={(e) => setRow(i, "accept", e.target.value)} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1556,31 +1564,49 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل العمل", "Work History")}</h3>
         {(() => {
           const hist = db.imports
-            .map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0 } : null; })
+            .map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0, accept: Number(rr.accept) || 0 } : null; })
             .filter(Boolean)
             .sort((a, b) => (a.date < b.date ? 1 : -1));
+          const ftDays = hist.filter((h) => h.hours > 0 || h.accept > 0);
+          const avgAccept = ftDays.length ? Math.round(ftDays.reduce((s, h) => s + h.accept, 0) / ftDays.length) : 0;
+          const redDays = ftDays.filter((h) => (h.accept > 0 && h.accept < ACCEPT_MIN) || (h.hours > 0 && h.hours < HOURS_MIN)).length;
           const isFT = rider.type === "Full Time";
           if (hist.length === 0) return <p className="text-sm text-slate-400">{t("لا يوجد سجل عمل بعد", "No work history yet")}</p>;
           return (
             <div className="overflow-x-auto"><table className="w-full text-sm">
-              <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("الطلبات"), tr("COD"), ...(isFT ? [tr("ساعات الدوام")] : [])].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+              <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("الطلبات"), tr("COD"), ...(isFT ? [tr("ساعات الدوام"), t("قبول %", "Accept %")] : [])].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
               <tbody>
-                {hist.map((h, i) => (
+                {hist.map((h, i) => { const hRed = isFT && h.hours > 0 && h.hours < HOURS_MIN; const aRed = isFT && h.accept > 0 && h.accept < ACCEPT_MIN; return (
                   <tr key={i} className="border-b border-slate-50">
                     <td className="py-2 px-3" dir="ltr">{h.date}</td>
                     <td className="px-3">{h.orders}</td>
                     <td className="px-3">{omr(h.cod)}</td>
-                    {isFT && <td className="px-3">{h.hours}</td>}
+                    {isFT && <td className="px-3" style={{ color: hRed ? "#c0341d" : "inherit", fontWeight: hRed ? 700 : 400 }}>{h.hours}{hRed ? " 🔴" : ""}</td>}
+                    {isFT && <td className="px-3" style={{ color: aRed ? "#c0341d" : "inherit", fontWeight: aRed ? 700 : 400 }}>{h.accept ? h.accept + "%" : "—"}{aRed ? " 🔴" : ""}</td>}
                   </tr>
-                ))}
+                ); })}
                 <tr className="font-bold bg-slate-50">
                   <td className="py-2 px-3">{t("الإجمالي", "Total")}</td>
                   <td className="px-3">{m.orders}</td>
                   <td className="px-3">{omr(m.codToTransfer)}</td>
                   {isFT && <td className="px-3">{m.hours} <span className="text-xs font-normal text-slate-500">= {omr(m.hoursPay)}</span></td>}
+                  {isFT && <td className="px-3" style={{ color: avgAccept > 0 && avgAccept < ACCEPT_MIN ? "#c0341d" : "inherit" }}>{avgAccept ? avgAccept + "%" : "—"}</td>}
                 </tr>
               </tbody>
             </table></div>
+          );
+        })()}
+        {rider.type === "Full Time" && (() => {
+          const hist = db.imports.map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { hours: Number(rr.hours) || 0, accept: Number(rr.accept) || 0 } : null; }).filter(Boolean);
+          const ftDays = hist.filter((h) => h.hours > 0 || h.accept > 0);
+          const avgAccept = ftDays.length ? Math.round(ftDays.reduce((s, h) => s + h.accept, 0) / ftDays.length) : 0;
+          const redDays = ftDays.filter((h) => (h.accept > 0 && h.accept < ACCEPT_MIN) || (h.hours > 0 && h.hours < HOURS_MIN)).length;
+          return (
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("متوسط القبول", "Avg acceptance")}</div><div className="font-bold" style={{ color: avgAccept > 0 && avgAccept < ACCEPT_MIN ? "#c0341d" : BRAND.navy }}>{avgAccept ? avgAccept + "%" : "—"}</div></div>
+              <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("إجمالي الساعات", "Total hours")}</div><div className="font-bold">{m.hours}</div></div>
+              <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("أيام دون المستوى", "Below-target days")}</div><div className="font-bold" style={{ color: redDays > 0 ? "#c0341d" : "#0f9d58" }}>{redDays}</div></div>
+            </div>
           );
         })()}
       </Card>
