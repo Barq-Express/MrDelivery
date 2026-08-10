@@ -1221,12 +1221,56 @@ function TransfersTab({ company, db, save, user }) {
     save({ ...db, transfers: db.transfers.map((t) => (t.id === id ? { ...t, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي"), decidedBy: me, decidedAt: at, auditLog: [...(t.auditLog || []), entry] } : t)) });
   };
   const pending = list.filter((t) => t.status === "Pending").length;
+  const [q, setQ] = useState("");
+  const [statusF, setStatusF] = useState("all");
+  // نظرة عامة لكل مندوب: كم عليه COD وهل حوّل
+  const rdrs = db.riders.filter((r) => r.company === company && r.status === "Active");
+  const dueRows = rdrs.map((r) => {
+    const m = riderMoney(db, r.id);
+    const trs = db.transfers.filter((t) => t.riderId === r.id);
+    const hasPending = trs.some((t) => t.status === "Pending");
+    const lastDecided = trs.filter((t) => t.decidedBy).slice(-1)[0];
+    let key, label, color;
+    if (m.owed <= 0.001 && m.transferred > 0) { key = "approved"; label = tr("قبول يدوي"); color = "#0f9d58"; }
+    else if (hasPending) { key = "review"; label = tr("قيد المراجعة"); color = "#d97706"; }
+    else if (lastDecided && lastDecided.status === "Rejected") { key = "rejected"; label = tr("رفض يدوي"); color = "#c0341d"; }
+    else { key = "pending"; label = t("لم يحوّل (Pending)", "Not transferred (Pending)"); color = "#d97706"; }
+    return { r, m, key, label, color, hasPending };
+  }).filter((x) => x.m.codToTransfer > 0.001);
+  const shownDue = dueRows.filter((x) => (statusF === "all" || x.key === statusF) && (x.r.name.includes(q) || (x.r.phone || "").includes(q) || (x.r.companyId || "").includes(q)));
   return (
     <div className="space-y-4">
       <Card className="p-5">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <h3 className="font-bold text-slate-800">{t("مستحقات COD على المناديب", "Rider COD Dues")} — {cLabel(company)}</h3>
+          <div className="flex gap-2 flex-wrap">
+            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-44" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All")}</option><option value="pending">{t("لم يحوّل", "Not transferred")}</option><option value="review">{tr("قيد المراجعة")}</option><option value="approved">{tr("قبول يدوي")}</option><option value="rejected">{tr("رفض يدوي")}</option></select>
+            <Btn kind="ghost" size="sm" onClick={() => exportExcel(shownDue.map((x) => ({ المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": x.m.codToTransfer, المحوّل: x.m.transferred, المتبقي: x.m.owed, الحالة: x.label })), "COD_Dues_" + company)}><Download size={14} /> Excel ({shownDue.length})</Btn>
+          </div>
+        </div>
+        <div className="overflow-x-auto"><table className="w-full text-sm">
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), "ID", t("COD الكلي", "Total COD"), t("المحوّل", "Transferred"), t("المتبقي", "Remaining"), t("الحالة", "Status")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <tbody>
+            {shownDue.map((x) => (
+              <tr key={x.r.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="py-2.5 px-3 font-semibold text-slate-800">{x.r.name}<div className="text-[11px] text-slate-400" dir="ltr">{x.r.phone}</div></td>
+                <td className="px-3 text-slate-500">{x.r.companyId || "—"}</td>
+                <td className="px-3">{omr(x.m.codToTransfer)}</td>
+                <td className="px-3 text-slate-500">{omr(x.m.transferred)}</td>
+                <td className="px-3 font-bold" style={{ color: x.m.owed > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(x.m.owed)}</td>
+                <td className="px-3"><Pill color={x.color}>{x.label}</Pill></td>
+              </tr>
+            ))}
+            {shownDue.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-400">{t("لا يوجد مناديب عليهم مبالغ", "No riders with dues")}</td></tr>}
+          </tbody>
+        </table></div>
+      </Card>
+
+      <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold text-slate-800">{t("COD والتحويلات","COD & Transfers")} — {cLabel(company)} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
-          <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((t) => ({ المندوب: riderName(t.riderId), المبلغ: t.amount, المرجع: t.reference, التاريخ: t.date, الحالة: t.status, التصنيف: t.reconLabel || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
+          <h3 className="font-bold text-slate-800">{t("سجل التحويلات المرفوعة", "Submitted Transfers")} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
+          <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((t) => ({ المندوب: riderName(t.riderId), المبلغ: t.amount, المرجع: t.reference, التاريخ: t.date, الحالة: t.status, التصنيف: t.reconLabel || "", الموظف: t.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -3151,7 +3195,14 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session || null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s || null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession((prev) => {
+        const pid = prev && prev.user && prev.user.id;
+        const nid = s && s.user && s.user.id;
+        if (pid && nid && pid === nid) return prev; // نفس المستخدم (إعادة تحقق عند الرجوع للنافذة) — لا نعيد التحميل
+        return s || null;
+      });
+    });
     return () => { try { sub.subscription.unsubscribe(); } catch (e) {} };
   }, []);
 
@@ -3161,14 +3212,12 @@ export default function App() {
     const resolveProf = (norm) => (norm && norm.staff && norm.staff[email]) || STAFF_BY_EMAIL[email] || { role: "Operations Manager", name: email, company: null };
     const p0 = resolveProf(null);
     setStaff({ ...p0, email });
-    setRoute(p0.role === "Supervisor" ? "company:" + p0.company : "dashboard");
     supabase.from("app_state").select("data, updated_at").eq("id", APP_ROW_ID).single().then(({ data }) => {
       const norm = normalizeDB(data ? data.data : null);
       if (data) lastAtRef.current = data.updated_at ? new Date(data.updated_at).getTime() : Date.now();
       setDb(norm);
       const prof = resolveProf(norm);
       setStaff({ ...prof, email });
-      if (prof.role === "Supervisor") setRoute("company:" + prof.company);
     });
     const ch = supabase.channel("app_state_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "app_state" }, (payload) => {
@@ -3176,7 +3225,10 @@ export default function App() {
           const t = payload.new.updated_at ? new Date(payload.new.updated_at).getTime() : Date.now();
           if (t < lastAtRef.current) return;
           lastAtRef.current = t;
-          setDb(normalizeDB(payload.new.data));
+          const norm = normalizeDB(payload.new.data);
+          setDb(norm);
+          const prof = (norm && norm.staff && norm.staff[email]) || STAFF_BY_EMAIL[email] || { role: "Operations Manager", name: email, company: null };
+          setStaff({ ...prof, email });
         }
       }).subscribe();
     return () => { try { supabase.removeChannel(ch); } catch (e) {} };
