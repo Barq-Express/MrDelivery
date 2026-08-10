@@ -402,6 +402,7 @@ function normalizeDB(db) {
     riders: db.riders || SEED_RIDERS,
     imports: db.imports || [],
     transfers: db.transfers || [],
+    payouts: db.payouts || [],
     bankRows: { Talabat: b.Talabat || [], Snoonu: b.Snoonu || [], Aramex: b.Aramex || [] },
     attendance: db.attendance || {},
     employees: db.employees || [],
@@ -531,7 +532,8 @@ function riderMoney(db, riderId) {
     }
   }
   const hoursPay = hours * HOUR_RATE;
-  return { orders, hours, hoursPay, codToTransfer, transferred, owed: codToTransfer - transferred, earn };
+  const paidDues = (db.payouts || []).filter((p) => p.riderId === riderId).reduce((a, p) => a + (Number(p.amount) || 0), 0);
+  return { orders, hours, hoursPay, codToTransfer, transferred, owed: codToTransfer - transferred, earn, paidDues, duesRemaining: earn - paidDues };
 }
 
 /* ============================================================
@@ -670,10 +672,11 @@ function ExcelImporter({ company, riders, onApply }) {
 /* ============================================================
    Login
    ============================================================ */
-function Login({ onRider, onToggleLang }) {
+function Login({ onRider, onHrEmp, onToggleLang }) {
   const [tab, setTab] = useState("staff");
   const [email, setEmail] = useState(""); const [pw, setPw] = useState("");
   const [phone, setPhone] = useState(""); const [rpw, setRpw] = useState("");
+  const [huser, setHuser] = useState(""); const [hpw, setHpw] = useState("");
   const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   const staffLogin = () => {
     setErr(""); setBusy(true);
@@ -690,6 +693,14 @@ function Login({ onRider, onToggleLang }) {
       onRider(data, { phone: phone.trim(), password: rpw });
     });
   };
+  const hrLogin = () => {
+    setErr(""); setBusy(true);
+    supabase.rpc("hr_emp_login", { p_user: huser.trim(), p_password: hpw }).then(({ data, error }) => {
+      setBusy(false);
+      if (error || !data) return setErr(t("اسم المستخدم أو كلمة المرور غير صحيحة", "Invalid username or password"));
+      onHrEmp(data, { user: huser.trim(), password: hpw });
+    });
+  };
   return (
     <div dir={dirOf()} className="min-h-screen flex items-center justify-center p-4" style={{ background: BRAND.navy }}>
       <div className="w-full max-w-md">
@@ -700,7 +711,7 @@ function Login({ onRider, onToggleLang }) {
         </div>
         <Card className="p-6">
           <div className="flex gap-1 mb-5 border-b border-slate-200">
-            {[["staff", t("دخول الموظفين", "Staff Login")], ["rider", t("دخول المناديب", "Rider Login")]].map(([k, l]) => (
+            {[["staff", t("الموظفون", "Staff")], ["rider", t("المناديب", "Riders")], ["hremp", t("موظف HR", "HR Staff")]].map(([k, l]) => (
               <button key={k} onClick={() => { setTab(k); setErr(""); }} className="px-4 py-2 text-sm font-semibold border-b-2" style={tab === k ? { color: BRAND.orange, borderColor: BRAND.orange } : { color: "#64748b", borderColor: "transparent" }}>{l}</button>
             ))}
           </div>
@@ -711,12 +722,19 @@ function Login({ onRider, onToggleLang }) {
               {err && <p className="text-xs text-red-600">{err}</p>}
               <Btn onClick={staffLogin} className="w-full justify-center">{busy ? "..." : t("تسجيل الدخول", "Sign In")}</Btn>
             </div>
-          ) : (
+          ) : tab === "rider" ? (
             <div className="space-y-4">
               <Field label={t("رقم الهاتف", "Phone")}><input className={inputCls} dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="94003001" /></Field>
               <Field label={t("كلمة المرور", "Password")}><input type="password" className={inputCls} value={rpw} onChange={(e) => setRpw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && riderLogin()} placeholder="••••••" /></Field>
               {err && <p className="text-xs text-red-600">{err}</p>}
               <Btn onClick={riderLogin} className="w-full justify-center">{busy ? "..." : t("دخول المندوب", "Rider Sign In")}</Btn>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Field label={t("اسم المستخدم", "Username")}><input className={inputCls} dir="ltr" value={huser} onChange={(e) => setHuser(e.target.value)} placeholder="ahmed" /></Field>
+              <Field label={t("كلمة المرور", "Password")}><input type="password" className={inputCls} value={hpw} onChange={(e) => setHpw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && hrLogin()} placeholder="••••••" /></Field>
+              {err && <p className="text-xs text-red-600">{err}</p>}
+              <Btn onClick={hrLogin} className="w-full justify-center">{busy ? "..." : t("دخول موظف HR", "HR Staff Sign In")}</Btn>
             </div>
           )}
           <div className="mt-5 pt-4 border-t border-slate-100 text-center">
@@ -1185,12 +1203,23 @@ function OrdersTab({ company, db, save }) {
   );
 }
 
-function TransfersTab({ company, db, save }) {
+function TransfersTab({ company, db, save, user }) {
+  const [viewAudit, setViewAudit] = useState(null);
   const [viewReceipt, setViewReceipt] = useState(null);
   const rIds = new Set(db.riders.filter((r) => r.company === company).map((r) => r.id));
   const list = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
-  const setStatus = (id, status) => save({ ...db, transfers: db.transfers.map((t) => (t.id === id ? { ...t, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي") } : t)) });
+  const setStatus = (id, status) => {
+    const cur = db.transfers.find((x) => x.id === id);
+    const me = (user && (user.name || user.email)) || "";
+    const isAdmin = user && user.role === "Admin";
+    if (cur && cur.decidedBy && cur.decidedBy !== me && !isAdmin) {
+      return alert(t("هذا القرار اتخذه: " + cur.decidedBy + "\nلا يمكن تغييره إلا بواسطته أو بواسطة مدير النظام.", "Decided by: " + cur.decidedBy + "\nOnly they or the System Admin can change it."));
+    }
+    const at = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const entry = { action: status === "Approved" ? "قبول يدوي" : "رفض يدوي", by: me, at, override: !!(cur && cur.decidedBy && cur.decidedBy !== me && isAdmin) };
+    save({ ...db, transfers: db.transfers.map((t) => (t.id === id ? { ...t, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي"), decidedBy: me, decidedAt: at, auditLog: [...(t.auditLog || []), entry] } : t)) });
+  };
   const pending = list.filter((t) => t.status === "Pending").length;
   return (
     <div className="space-y-4">
@@ -1212,10 +1241,16 @@ function TransfersTab({ company, db, save }) {
                   <td className="px-3" dir="ltr">{t.reference}</td>
                   <td className="px-3 text-slate-500">{t.date}</td>
                   <td className="px-3">{t.receipt ? <button onClick={() => setViewReceipt(t.receipt)} className="text-slate-500 hover:text-slate-800"><Eye size={16} /></button> : "—"}</td>
-                  <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}</td>
-                  <td className="px-3 flex gap-1 py-2">
-                    <button onClick={() => setStatus(t.id, "Approved")} title={tr("قبول")} className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
-                    <button onClick={() => setStatus(t.id, "Rejected")} title={tr("رفض")} className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
+                  <td className="px-3">
+                    {t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}
+                    {t.decidedBy && <div className="text-[10px] text-slate-400 mt-1">{t("بواسطة", "by")}: {t.decidedBy}</div>}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1 items-center">
+                      <button onClick={() => setStatus(t.id, "Approved")} title={tr("قبول")} className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
+                      <button onClick={() => setStatus(t.id, "Rejected")} title={tr("رفض")} className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
+                      {t.auditLog && t.auditLog.length > 0 && <button onClick={() => setViewAudit(t)} title={t("سجل التدقيق", "Audit log")} className="text-slate-400 hover:text-slate-700"><Clock size={15} /></button>}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1225,6 +1260,26 @@ function TransfersTab({ company, db, save }) {
         </div>
       </Card>
       <Modal open={!!viewReceipt} onClose={() => setViewReceipt(null)} title={tr("إيصال البنك")}>{viewReceipt && <img src={viewReceipt} alt={tr("إيصال")} className="w-full rounded-lg" />}</Modal>
+
+      <Modal open={!!viewAudit} onClose={() => setViewAudit(null)} title={t("سجل التدقيق", "Audit Log")}>
+        {viewAudit && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">{t("المندوب:", "Rider:")} <b>{riderName(viewAudit.riderId)}</b> · {omr(viewAudit.amount)}</p>
+            <div className="space-y-2">
+              {(viewAudit.auditLog || []).map((e, i) => (
+                <div key={i} className="flex items-center justify-between p-2 rounded-lg" style={{ background: e.action.includes("قبول") ? "#0f9d5811" : "#c0341d11" }}>
+                  <div>
+                    <div className="text-sm font-semibold" style={{ color: e.action.includes("قبول") ? "#0f9d58" : "#c0341d" }}>{tr(e.action)}{e.override ? " ⚠️ " + t("تجاوز إداري", "admin override") : ""}</div>
+                    <div className="text-[11px] text-slate-400">{t("بواسطة", "by")}: {e.by || "—"}</div>
+                  </div>
+                  <div className="text-[11px] text-slate-400" dir="ltr">{e.at}</div>
+                </div>
+              ))}
+              {(!viewAudit.auditLog || viewAudit.auditLog.length === 0) && <p className="text-sm text-slate-400">{t("لا يوجد سجل", "No log")}</p>}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -1466,6 +1521,7 @@ function ReportsScoped({ db, company }) {
 
 const CTABS = [
   { key: "overview", ar: tr("نظرة عامة"), en: "Overview", icon: LayoutDashboard },
+  { key: "dues", ar: t("مستحقات المناديب", "Rider Dues"), en: "Rider Dues", icon: Wallet },
   { key: "riders", ar: tr("المناديب"), en: "Riders", icon: Users },
   { key: "orders", ar: tr("الطلبات"), en: "Orders", icon: Truck },
   { key: "transfers", ar: tr("COD والتحويلات"), en: "COD & Transfers", icon: Wallet },
@@ -1474,6 +1530,80 @@ const CTABS = [
   { key: "shifts", ar: tr("الشفتات"), en: "Shifts", icon: Clock },
   { key: "reports", ar: tr("التقارير"), en: "Reports", icon: FileBarChart },
 ];
+
+function DuesTab({ company, db, save, user }) {
+  const canPay = user && (user.role === "Admin" || user.role === "Operations Manager" || user.role === "Finance");
+  const [q, setQ] = useState("");
+  const [payFor, setPayFor] = useState(null);
+  const [amt, setAmt] = useState("");
+  const [note, setNote] = useState("");
+  const list = db.riders.filter((r) => r.company === company && r.status === "Active" && (r.name.includes(q) || (r.phone || "").includes(q) || (r.companyId || "").includes(q)));
+  const pay = () => {
+    const a = Number(amt) || 0;
+    if (a <= 0) return alert(tr("أدخل مبلغاً صحيحاً"));
+    const rec = { id: uid(), riderId: payFor.id, amount: a, note: note.trim(), by: (user && (user.name || user.email)) || "", at: new Date().toISOString().slice(0, 16).replace("T", " ") };
+    save({ ...db, payouts: [...(db.payouts || []), rec] });
+    setPayFor(null); setAmt(""); setNote("");
+  };
+  const delPayout = (pid) => { if (window.confirm(tr("حذف هذه الدفعة؟"))) save({ ...db, payouts: (db.payouts || []).filter((p) => p.id !== pid) }); };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Wallet size={18} color={BRAND.orange} /> {t("مستحقات المناديب", "Rider Dues")} — {cLabel(company)}</h3>
+        <div className="flex gap-2">
+          <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-52" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <Btn kind="ghost" onClick={() => exportExcel(list.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, النوع: r.type, المستحق: m.earn, المدفوع: m.paidDues, المتبقي: m.duesRemaining, البنك: r.bankName || "", الحساب: r.bank || "" }; }), "Dues_" + company)}><Download size={15} /> Excel</Btn>
+        </div>
+      </div>
+      <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+        <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), tr("النوع"), t("المستحق", "Dues"), t("المدفوع", "Paid"), t("المتبقي", "Remaining"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
+        <tbody>
+          {list.map((r) => { const m = riderMoney(db, r.id); const rem = m.duesRemaining; return (
+            <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
+              <td className="py-3 px-3 font-semibold text-slate-800">{r.name}<div className="text-[11px] text-slate-400" dir="ltr">{r.phone}</div></td>
+              <td className="px-3 text-slate-600">{r.type}</td>
+              <td className="px-3">{omr(m.earn)}</td>
+              <td className="px-3 text-slate-500">{omr(m.paidDues)}</td>
+              <td className="px-3 font-bold" style={{ color: rem > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(rem)}</td>
+              <td className="px-3">{canPay && rem > 0.001 && <Btn size="sm" onClick={() => { setPayFor(r); setAmt(String(rem.toFixed(3))); setNote(""); }}>{t("دفع", "Pay")}</Btn>}</td>
+            </tr>
+          ); })}
+          {list.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-slate-400">{tr("لا يوجد مناديب")}</td></tr>}
+        </tbody>
+      </table></div></Card>
+
+      {(db.payouts || []).some((p) => db.riders.some((r) => r.id === p.riderId && r.company === company)) && (
+        <Card className="p-4">
+          <h4 className="font-bold text-slate-800 text-sm mb-2">{t("سجل الدفعات", "Payout History")}</h4>
+          <div className="overflow-x-auto"><table className="w-full text-xs">
+            <thead><tr className="text-right text-slate-400 border-b border-slate-100">{[tr("التاريخ"), tr("المندوب"), t("المبلغ", "Amount"), t("الموظف", "By"), t("ملاحظة", "Note"), ""].map((h) => <th key={h} className="py-1.5 px-2 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>
+              {(db.payouts || []).filter((p) => db.riders.some((r) => r.id === p.riderId && r.company === company)).slice().reverse().map((p) => { const rd = db.riders.find((r) => r.id === p.riderId); return (
+                <tr key={p.id} className="border-b border-slate-50">
+                  <td className="py-1.5 px-2" dir="ltr">{p.at}</td><td className="px-2 font-semibold">{rd ? rd.name : "—"}</td><td className="px-2">{omr(p.amount)}</td><td className="px-2">{p.by || "—"}</td><td className="px-2 text-slate-500">{p.note || "—"}</td>
+                  <td className="px-2">{user && user.role === "Admin" && <button onClick={() => delPayout(p.id)} className="text-red-500">✕</button>}</td>
+                </tr>
+              ); })}
+            </tbody>
+          </table></div>
+        </Card>
+      )}
+
+      <Modal open={!!payFor} onClose={() => setPayFor(null)} title={t("دفع مستحقات", "Pay Dues")}>
+        {payFor && (() => { const m = riderMoney(db, payFor.id); return (
+          <div className="space-y-4">
+            <div className="text-sm text-slate-600">{payFor.name} · {t("المتبقي:", "Remaining:")} <b style={{ color: "#c0341d" }}>{omr(m.duesRemaining)}</b></div>
+            <Field label={t("مبلغ الدفعة", "Payment amount")}><input type="number" step="0.001" className={inputCls} dir="ltr" value={amt} onChange={(e) => setAmt(e.target.value)} /></Field>
+            <Field label={t("ملاحظة (اختياري)", "Note (optional)")}><input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("مثال: دفعة نقدية / تحويل بنكي", "e.g. cash / bank transfer")} /></Field>
+            <p className="text-[11px] text-slate-400">{t("يمكن دفع المبلغ كاملاً أو جزء منه. المتبقي يتحدّث تلقائياً.", "You can pay full or partial. Remaining updates automatically.")}</p>
+            <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setPayFor(null)}>{tr("إلغاء")}</Btn><Btn onClick={pay}>{t("تأكيد الدفع", "Confirm Payment")}</Btn></div>
+          </div>
+        ); })()}
+      </Modal>
+    </div>
+  );
+}
 
 function CompanyWindow({ company, db, save, user }) {
   const [tab, setTab] = useState("overview");
@@ -1499,7 +1629,8 @@ function CompanyWindow({ company, db, save, user }) {
         {tab === "overview" && <OverviewTab company={company} db={db} />}
         {tab === "riders" && <Riders db={db} save={save} company={company} user={user} />}
         {tab === "orders" && <OrdersTab company={company} db={db} save={save} />}
-        {tab === "transfers" && <TransfersTab company={company} db={db} save={save} />}
+        {tab === "transfers" && <TransfersTab company={company} db={db} save={save} user={user} />}
+        {tab === "dues" && <DuesTab company={company} db={db} save={save} user={user} />}
         {tab === "recon" && <ReconTab company={company} db={db} save={save} />}
         {tab === "attendance" && <AttendanceTab company={company} db={db} save={save} />}
         {tab === "shifts" && <ShiftsWindow db={db} save={save} company={company} />}
@@ -1512,6 +1643,95 @@ function CompanyWindow({ company, db, save, user }) {
 /* ============================================================
    Rider portal
    ============================================================ */
+function HREmpPortal({ data, creds, onRefresh, onLogout }) {
+  const e = data.employee || {};
+  const types = (data.leaveTypes || []).filter((x) => x.active && (!x.gender || x.gender === e.gender));
+  const reqs = data.leaveRequests || [];
+  const pays = data.payrollRuns || [];
+  const [form, setForm] = useState({ typeId: (types[0] && types[0].id) || "annual", from: todayStr(), to: todayStr(), reason: "" });
+  const [msg, setMsg] = useState(""); const [busy, setBusy] = useState(false);
+  const [pw, setPw] = useState({ old: "", nw: "" }); const [pwMsg, setPwMsg] = useState("");
+
+  const bal = (typeId) => {
+    const ty = (data.leaveTypes || []).find((x) => x.id === typeId);
+    const used = reqs.filter((r) => r.typeId === typeId && r.status === "approved").reduce((s, r) => s + r.days, 0);
+    const pend = reqs.filter((r) => r.typeId === typeId && r.status === "pending").reduce((s, r) => s + r.days, 0);
+    return { ent: ty ? ty.ent : 0, used, pend, remaining: ty && ty.ent ? ty.ent - used : null };
+  };
+  const days = hrDaysBetween(form.from, form.to);
+  const submit = () => {
+    setBusy(true); setMsg("");
+    supabase.rpc("hr_emp_request_leave", { p_user: creds.user, p_password: creds.password, p_type: form.typeId, p_from: form.from, p_to: form.to, p_days: days, p_reason: form.reason || "" })
+      .then(({ data: d, error }) => { setBusy(false); if (error || !d) return setMsg(t("تعذّر الإرسال", "Submission failed")); setMsg(t("✅ تم إرسال الطلب", "✅ Request sent")); setForm({ ...form, reason: "" }); onRefresh(d); });
+  };
+  const changePw = () => {
+    if (!pw.old || !pw.nw) return setPwMsg(t("عبّئ الحقول", "Fill the fields"));
+    supabase.rpc("hr_emp_change_password", { p_user: creds.user, p_old: pw.old, p_new: pw.nw }).then(({ data: d, error }) => {
+      if (error || !d) return setPwMsg(t("كلمة المرور الحالية غير صحيحة", "Current password is incorrect"));
+      setPwMsg(t("✅ تم تغيير كلمة المرور", "✅ Password changed")); setPw({ old: "", nw: "" }); creds.password = pw.nw; try { localStorage.setItem("mrd_hremp", JSON.stringify(creds)); } catch (x) {}
+    });
+  };
+  const stName = { approved: t("معتمدة", "Approved"), pending: t("معلّقة", "Pending"), rejected: t("مرفوضة", "Rejected"), cancelled: t("ملغاة", "Cancelled") };
+  const stColor = { approved: "#0f9d58", pending: "#d97706", rejected: "#c0341d", cancelled: "#94a3b8" };
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-4">
+      <Card className="p-5">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 rounded-2xl grid place-items-center text-lg font-bold text-white" style={{ background: BRAND.navy }}>{(e.name || "?").slice(0, 1)}</div>
+          <div><div className="font-bold text-slate-800">{e.name}</div><div className="text-xs text-slate-400">{e.jobTitle || "—"} · {e.dept || "—"}</div></div>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("أرصدة إجازاتي", "My Leave Balances")}</h3>
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("النوع", "Type"), t("المستحق", "Entitled"), t("المستخدم", "Used"), t("معلّقة", "Pending"), t("المتبقي", "Remaining")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <tbody>{types.map((ty) => { const b = bal(ty.id); return <tr key={ty.id} className="border-b border-slate-50"><td className="py-2 px-3">{ty.nameAr}</td><td className="px-3">{b.ent || "—"}</td><td className="px-3">{b.used}</td><td className="px-3">{b.pend}</td><td className="px-3 font-bold">{b.remaining ?? "—"}</td></tr>; })}</tbody></table></div>
+      </Card>
+
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("تقديم طلب إجازة", "Request Leave")}</h3>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label={t("نوع الإجازة", "Leave type")}><select className={inputCls} value={form.typeId} onChange={(ev) => setForm({ ...form, typeId: ev.target.value })}>{types.map((ty) => <option key={ty.id} value={ty.id}>{ty.nameAr}</option>)}</select></Field>
+          <Field label={t("المتبقي", "Remaining")}><input className={inputCls} value={bal(form.typeId).remaining ?? "—"} readOnly style={{ background: "#f8fafc" }} /></Field>
+          <Field label={t("من", "From")}><input type="date" className={inputCls} value={form.from} onChange={(ev) => setForm({ ...form, from: ev.target.value })} /></Field>
+          <Field label={t("إلى", "To")}><input type="date" className={inputCls} value={form.to} onChange={(ev) => setForm({ ...form, to: ev.target.value })} /></Field>
+        </div>
+        <div className="mt-3"><Field label={t("السبب", "Reason")}><input className={inputCls} value={form.reason} onChange={(ev) => setForm({ ...form, reason: ev.target.value })} /></Field></div>
+        <div className="text-xs text-slate-500 mt-2">{t("عدد الأيام:", "Days:")} <b>{days}</b></div>
+        {msg && <p className="text-xs mt-2" style={{ color: msg.charAt(0) === "✅" ? "#0f9d58" : "#c0341d" }}>{msg}</p>}
+        <div className="mt-3"><Btn onClick={submit}>{busy ? "..." : t("إرسال الطلب", "Submit")}</Btn></div>
+      </Card>
+
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("طلباتي", "My Requests")}</h3>
+        {reqs.length === 0 ? <p className="text-sm text-slate-400">{t("لا توجد طلبات", "No requests")}</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("النوع", "Type"), t("من", "From"), t("إلى", "To"), t("الأيام", "Days"), t("الحالة", "Status")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>{reqs.slice().reverse().map((r) => { const ty = (data.leaveTypes || []).find((x) => x.id === r.typeId); return <tr key={r.id} className="border-b border-slate-50"><td className="py-2 px-3">{ty ? ty.nameAr : r.typeId}{r.status === "rejected" && r.rejectReason && <div className="text-[10px] text-red-600">{r.rejectReason}</div>}</td><td className="px-3" dir="ltr">{r.from}</td><td className="px-3" dir="ltr">{r.to}</td><td className="px-3">{r.days}</td><td className="px-3"><Pill color={stColor[r.status]}>{stName[r.status] || r.status}</Pill></td></tr>; })}</tbody></table></div>
+        )}
+      </Card>
+
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("رواتبي", "My Payslips")}</h3>
+        {pays.length === 0 ? <p className="text-sm text-slate-400">{t("لا يوجد كشوفات", "No payslips")}</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("الشهر", "Month"), t("الأساسي", "Basic"), t("البدلات", "Allow."), t("الاستقطاعات", "Deduct."), t("الصافي", "Net"), t("الحالة", "Status")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>{pays.filter((p) => p.item).map((p) => <tr key={p.month} className="border-b border-slate-50"><td className="py-2 px-3" dir="ltr">{p.month}</td><td className="px-3">{omr(p.item.basic)}</td><td className="px-3">{omr(p.item.allowances)}</td><td className="px-3">{omr(p.item.deductions)}</td><td className="px-3 font-bold">{omr(p.item.basic + p.item.allowances - p.item.deductions)}</td><td className="px-3">{p.item.status === "paid" ? <Pill color="#0f9d58">{t("مدفوع", "Paid")}</Pill> : <Pill color="#d97706">{t("قيد المعالجة", "Processing")}</Pill>}</td></tr>)}</tbody></table></div>
+        )}
+      </Card>
+
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("تغيير كلمة المرور", "Change Password")}</h3>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label={t("كلمة المرور الحالية", "Current password")}><input type="password" className={inputCls} value={pw.old} onChange={(ev) => setPw({ ...pw, old: ev.target.value })} /></Field>
+          <Field label={t("كلمة المرور الجديدة", "New password")}><input type="password" className={inputCls} value={pw.nw} onChange={(ev) => setPw({ ...pw, nw: ev.target.value })} /></Field>
+        </div>
+        {pwMsg && <p className="text-xs mt-2" style={{ color: pwMsg.charAt(0) === "✅" ? "#0f9d58" : "#c0341d" }}>{pwMsg}</p>}
+        <div className="mt-3"><Btn kind="ghost" onClick={changePw}>{t("تغيير", "Change")}</Btn></div>
+      </Card>
+    </div>
+  );
+}
+
 function RiderPortal({ db, riderId, creds, refresh }) {
   const rider = db.riders.find((r) => r.id === riderId);
   const [form, setForm] = useState({ amount: "", reference: "", date: todayStr(), receipt: "" });
@@ -2387,7 +2607,7 @@ function HRWindow({ db, save }) {
   const onLeaveOn = (d) => hr.leaveRequests.filter((r) => r.status === "approved" && r.from <= d && r.to >= d);
 
   /* ---- employees ---- */
-  const blankEmp = { name: "", mobile: "", civilId: "", nationality: "OM", gender: "M", jobTitle: "", empType: "fulltime", dept: "Talabat", joinDate: todayStr(), status: "active", basic: "", allowances: "", bankName: "", holder: "", acct: "", iban: "", notes: "" };
+  const blankEmp = { name: "", mobile: "", civilId: "", nationality: "OM", gender: "M", jobTitle: "", empType: "fulltime", dept: "Talabat", joinDate: todayStr(), status: "active", basic: "", allowances: "", bankName: "", holder: "", acct: "", iban: "", notes: "", email: "", username: "", password: "" };
   const saveEmp = () => {
     if (!form.name) return alert("الاسم مطلوب");
     const e = { ...form, basic: Number(form.basic) || 0, allowances: Number(form.allowances) || 0, deductions: form.deductions || 0 };
@@ -2649,6 +2869,10 @@ function HRWindow({ db, save }) {
           <Field label="اسم صاحب الحساب"><input className={inputCls} value={form.holder || ""} onChange={(e) => setForm({ ...form, holder: e.target.value })} /></Field>
           <Field label="رقم الحساب"><input className={inputCls} dir="ltr" value={form.acct || ""} onChange={(e) => setForm({ ...form, acct: e.target.value })} /></Field>
           <Field label="الآيبان"><input className={inputCls} dir="ltr" value={form.iban || ""} onChange={(e) => setForm({ ...form, iban: e.target.value })} /></Field>
+          <Field label="البريد الإلكتروني (للربط بحساب موظف الشركة)"><input className={inputCls} dir="ltr" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@mrd.app" /></Field>
+          <div className="md:col-span-2 border-t border-slate-100 pt-2 text-xs font-semibold text-slate-500">حساب دخول الموظف (اختياري) — للدخول لبوابته</div>
+          <Field label="اسم المستخدم"><input className={inputCls} dir="ltr" value={form.username || ""} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="مثال: ahmed" /></Field>
+          <Field label="كلمة المرور"><input className={inputCls} dir="ltr" value={form.password || ""} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="كلمة مرور أولية" /></Field>
         </div>
         <div className="flex justify-end gap-2 mt-4"><Btn kind="ghost" onClick={() => { setModal(null); setForm({}); }}>إلغاء</Btn><Btn onClick={saveEmp}>حفظ</Btn></div>
       </Modal>
@@ -2688,14 +2912,82 @@ function HRWindow({ db, save }) {
   );
 }
 
-function sidebarFor(user) {
+function hrRecordFor(db, user) {
+  if (!db || !db.hr || !user) return null;
+  const em = (user.email || "").trim().toLowerCase();
+  return (db.hr.employees || []).find((e) => (e.email && e.email.trim().toLowerCase() === em)) || null;
+}
+function MyHRView({ db, save, user }) {
+  const hr = db.hr || { leaveTypes: [], employees: [], leaveRequests: [], payrollRuns: [] };
+  const me = (hr.employees || []).find((e) => e.email && e.email.trim().toLowerCase() === (user.email || "").trim().toLowerCase());
+  const [form, setForm] = useState({ typeId: "annual", from: todayStr(), to: todayStr(), reason: "" });
+  const [msg, setMsg] = useState("");
+  if (!me) return <Card className="p-6"><p className="text-slate-400 text-sm">{t("لا يوجد سجل موظف مرتبط بحسابك.", "No employee record linked to your account.")}</p></Card>;
+  const types = (hr.leaveTypes || []).filter((x) => x.active && (!x.gender || x.gender === me.gender));
+  const reqs = (hr.leaveRequests || []).filter((r) => r.empId === me.id);
+  const pays = (hr.payrollRuns || []).map((r) => ({ month: r.month, item: r.items.find((it) => it.empId === me.id) })).filter((p) => p.item);
+  const bal = (typeId) => { const ty = hr.leaveTypes.find((x) => x.id === typeId); const used = reqs.filter((r) => r.typeId === typeId && r.status === "approved").reduce((s, r) => s + r.days, 0); const pend = reqs.filter((r) => r.typeId === typeId && r.status === "pending").reduce((s, r) => s + r.days, 0); return { ent: ty ? ty.ent : 0, used, pend, remaining: ty && ty.ent ? ty.ent - used : null }; };
+  const days = hrDaysBetween(form.from, form.to);
+  const submit = () => {
+    const b = bal(form.typeId);
+    if (b.ent && days > b.remaining) { setMsg(t("الرصيد لا يكفي", "Not enough balance")); return; }
+    const r = { id: "LV" + uid(), empId: me.id, typeId: form.typeId, from: form.from, to: form.to, days, reason: form.reason || "", status: "pending", reqDate: todayStr(), history: [], selfService: true };
+    save({ ...db, hr: { ...hr, leaveRequests: [r, ...(hr.leaveRequests || [])] } });
+    setForm({ ...form, reason: "" }); setMsg(t("✅ تم إرسال الطلب", "✅ Request sent"));
+  };
+  const stName = { approved: t("معتمدة", "Approved"), pending: t("معلّقة", "Pending"), rejected: t("مرفوضة", "Rejected"), cancelled: t("ملغاة", "Cancelled") };
+  const stColor = { approved: "#0f9d58", pending: "#d97706", rejected: "#c0341d", cancelled: "#94a3b8" };
+  return (
+    <div className="max-w-3xl space-y-4">
+      <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.navy }}><CalendarCheck size={18} color="#fff" /></span><h2 className="font-extrabold text-lg text-slate-800">{t("إجازاتي ورواتبي", "My Leave & Pay")}</h2></div>
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("أرصدة إجازاتي", "My Leave Balances")}</h3>
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("النوع", "Type"), t("المستحق", "Entitled"), t("المستخدم", "Used"), t("معلّقة", "Pending"), t("المتبقي", "Remaining")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <tbody>{types.map((ty) => { const b = bal(ty.id); return <tr key={ty.id} className="border-b border-slate-50"><td className="py-2 px-3">{ty.nameAr}</td><td className="px-3">{b.ent || "—"}</td><td className="px-3">{b.used}</td><td className="px-3">{b.pend}</td><td className="px-3 font-bold">{b.remaining ?? "—"}</td></tr>; })}</tbody></table></div>
+      </Card>
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("تقديم طلب إجازة", "Request Leave")}</h3>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label={t("نوع الإجازة", "Leave type")}><select className={inputCls} value={form.typeId} onChange={(e) => setForm({ ...form, typeId: e.target.value })}>{types.map((ty) => <option key={ty.id} value={ty.id}>{ty.nameAr}</option>)}</select></Field>
+          <Field label={t("المتبقي", "Remaining")}><input className={inputCls} value={bal(form.typeId).remaining ?? "—"} readOnly style={{ background: "#f8fafc" }} /></Field>
+          <Field label={t("من", "From")}><input type="date" className={inputCls} value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} /></Field>
+          <Field label={t("إلى", "To")}><input type="date" className={inputCls} value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} /></Field>
+        </div>
+        <div className="mt-3"><Field label={t("السبب", "Reason")}><input className={inputCls} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field></div>
+        <div className="text-xs text-slate-500 mt-2">{t("عدد الأيام:", "Days:")} <b>{days}</b></div>
+        {msg && <p className="text-xs mt-2" style={{ color: msg.charAt(0) === "✅" ? "#0f9d58" : "#c0341d" }}>{msg}</p>}
+        <div className="mt-3"><Btn onClick={submit}>{t("إرسال الطلب", "Submit")}</Btn></div>
+      </Card>
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("طلباتي", "My Requests")}</h3>
+        {reqs.length === 0 ? <p className="text-sm text-slate-400">{t("لا توجد طلبات", "No requests")}</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("النوع", "Type"), t("من", "From"), t("إلى", "To"), t("الأيام", "Days"), t("الحالة", "Status")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>{reqs.slice().reverse().map((r) => { const ty = hr.leaveTypes.find((x) => x.id === r.typeId); return <tr key={r.id} className="border-b border-slate-50"><td className="py-2 px-3">{ty ? ty.nameAr : r.typeId}{r.status === "rejected" && r.rejectReason && <div className="text-[10px] text-red-600">{r.rejectReason}</div>}</td><td className="px-3" dir="ltr">{r.from}</td><td className="px-3" dir="ltr">{r.to}</td><td className="px-3">{r.days}</td><td className="px-3"><Pill color={stColor[r.status]}>{stName[r.status] || r.status}</Pill></td></tr>; })}</tbody></table></div>
+        )}
+      </Card>
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3">{t("رواتبي", "My Payslips")}</h3>
+        {pays.length === 0 ? <p className="text-sm text-slate-400">{t("لا يوجد كشوفات", "No payslips")}</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("الشهر", "Month"), t("الأساسي", "Basic"), t("البدلات", "Allow."), t("الاستقطاعات", "Deduct."), t("الصافي", "Net"), t("الحالة", "Status")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>{pays.map((p) => <tr key={p.month} className="border-b border-slate-50"><td className="py-2 px-3" dir="ltr">{p.month}</td><td className="px-3">{omr(p.item.basic)}</td><td className="px-3">{omr(p.item.allowances)}</td><td className="px-3">{omr(p.item.deductions)}</td><td className="px-3 font-bold">{omr(p.item.basic + p.item.allowances - p.item.deductions)}</td><td className="px-3">{p.item.status === "paid" ? <Pill color="#0f9d58">{t("مدفوع", "Paid")}</Pill> : <Pill color="#d97706">{t("قيد المعالجة", "Processing")}</Pill>}</td></tr>)}</tbody></table></div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function sidebarFor(user, db) {
   const regItem = { key: "registration", label: t("تسجيل المناديب", "Registration"), kind: "registration" };
   if (user.role === "Supervisor") {
     const items = [{ key: "company:" + user.company, label: cLabel(user.company), kind: "company", company: user.company }];
+    const myRecS = hrRecordFor(db, user);
+    if (myRecS) items.push({ key: "myhr", label: t("إجازاتي ورواتبي", "My Leave & Pay"), kind: "myhr" });
     if (user.regAgent) items.push(regItem);
     return items;
   }
   const items = [{ key: "dashboard", label: t("اللوحة العامة", "Dashboard"), kind: "dashboard" }];
+  const myRec = hrRecordFor(db, user);
+  if (myRec) items.push({ key: "myhr", label: t("إجازاتي ورواتبي", "My Leave & Pay"), kind: "myhr" });
   COMPANIES.forEach((c) => items.push({ key: "company:" + c, label: cLabel(c), kind: "company", company: c }));
   if (user.role === "Admin" || user.role === "Operations Manager") {
     items.push({ key: "shifts", label: t("الشفتات (كل الشركات)", "Shifts (All)"), kind: "shifts" });
@@ -2828,6 +3120,7 @@ export default function App() {
   const [staff, setStaff] = useState(null);
   const [db, setDb] = useState(null);
   const [rider, setRider] = useState(null);
+  const [hrEmp, setHrEmp] = useState(null);
   const [route, setRoute] = useState("dashboard");
   const [sidebar, setSidebar] = useState(false);
   const lastAtRef = useRef(0);
@@ -2844,6 +3137,11 @@ export default function App() {
       supabase.rpc("rider_login", { p_phone: creds.phone, p_password: creds.password }).then(({ data }) => {
         if (data) setRider({ view: normalizeDB(data), creds });
       });
+    }
+    let hc = null;
+    try { hc = JSON.parse(localStorage.getItem("mrd_hremp") || "null"); } catch (x) { hc = null; }
+    if (hc && hc.user) {
+      supabase.rpc("hr_emp_login", { p_user: hc.user, p_password: hc.password }).then(({ data }) => { if (data) setHrEmp({ data, creds: hc }); });
     }
   }, []);
 
@@ -2905,6 +3203,17 @@ export default function App() {
     });
   };
 
+  if (hrEmp) {
+    const logoutHr = () => { try { localStorage.removeItem("mrd_hremp"); } catch (e) {} setHrEmp(null); };
+    const refreshHr = (d) => { if (d) setHrEmp({ data: d, creds: hrEmp.creds }); else supabase.rpc("hr_emp_login", { p_user: hrEmp.creds.user, p_password: hrEmp.creds.password }).then(({ data }) => { if (data) setHrEmp({ data, creds: hrEmp.creds }); }); };
+    return (
+      <div dir={dirOf()} className="min-h-screen bg-slate-100" data-lang={lang}>
+        <Topbar user={{ name: (hrEmp.data.employee && hrEmp.data.employee.name) || "HR", role: "HR" }} onLogout={logoutHr} onMenu={null} title={t("بوابة الموظف", "Employee Portal")} logo onToggleLang={toggleLang} />
+        <div className="p-4 md:p-6"><HREmpPortal data={hrEmp.data} creds={hrEmp.creds} onRefresh={refreshHr} onLogout={logoutHr} /></div>
+      </div>
+    );
+  }
+
   if (rider) {
     const refresh = () => supabase.rpc("rider_login", { p_phone: rider.creds.phone, p_password: rider.creds.password }).then(({ data }) => { if (data) setRider({ view: normalizeDB(data), creds: rider.creds }); });
     const logoutRider = () => { try { localStorage.removeItem("mrd_rider"); } catch (e) {} setRider(null); };
@@ -2926,11 +3235,11 @@ export default function App() {
     return <RegistrationForm onToggleLang={toggleLang} lockedCompany={lockedCompany} />;
   }
   if (session === undefined) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
-  if (!session) return <Login onToggleLang={toggleLang} onRider={(view, creds) => { try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {} setRider({ view: normalizeDB(view), creds }); }} />;
+  if (!session) return <Login onToggleLang={toggleLang} onRider={(view, creds) => { try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {} setRider({ view: normalizeDB(view), creds }); }} onHrEmp={(data, creds) => { try { localStorage.setItem("mrd_hremp", JSON.stringify(creds)); } catch (e) {} setHrEmp({ data, creds }); }} />;
   if (!staff || !db) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
 
   const user = staff;
-  const nav = sidebarFor(user);
+  const nav = sidebarFor(user, db);
   const keys = nav.map((n) => n.key);
   const current = keys.includes(route) ? route : keys[0];
   const activeItem = nav.find((n) => n.key === current);
@@ -2944,6 +3253,7 @@ export default function App() {
     if (activeItem.kind === "shifts") return <ShiftsWindow db={db} save={save} />;
     if (activeItem.kind === "employees") return <Employees db={db} save={save} user={user} />;
     if (activeItem.kind === "hr" && user.role === "Admin") return <HRWindow db={db} save={save} />;
+    if (activeItem.kind === "myhr") return <MyHRView db={db} save={save} user={user} />;
     if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} user={user} />;
     if (activeItem.kind === "areas") return <AreasWindow db={db} save={save} />;
     if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
