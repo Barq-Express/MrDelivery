@@ -1606,7 +1606,9 @@ function DuesTab({ company, db, save, user }) {
 }
 
 function CompanyWindow({ company, db, save, user }) {
-  const [tab, setTab] = useState("overview");
+  const tabKey = "mrd_ctab_" + company;
+  const [tab, setTabRaw] = useState(() => { try { return localStorage.getItem(tabKey) || "overview"; } catch (e) { return "overview"; } });
+  const setTab = (v) => { try { localStorage.setItem(tabKey, v); } catch (e) {} setTabRaw(v); };
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 pb-1">
@@ -2583,7 +2585,8 @@ const curMonthStr = () => todayStr().slice(0, 7);
 function HRWindow({ db, save }) {
   const hr = db.hr || { leaveTypes: HR_LEAVE_DEFAULTS, employees: [], leaveRequests: [], payrollRuns: [] };
   const setHr = (patch) => save({ ...db, hr: { ...hr, ...patch } });
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTabRaw] = useState(() => { try { return localStorage.getItem("mrd_hrtab") || "dashboard"; } catch (e) { return "dashboard"; } });
+  const setTab = (v) => { try { localStorage.setItem("mrd_hrtab", v); } catch (e) {} setTabRaw(v); };
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
   const [modal, setModal] = useState(null);
@@ -3121,7 +3124,8 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [rider, setRider] = useState(null);
   const [hrEmp, setHrEmp] = useState(null);
-  const [route, setRoute] = useState("dashboard");
+  const [route, setRouteRaw] = useState(() => { try { return localStorage.getItem("mrd_route") || "dashboard"; } catch (e) { return "dashboard"; } });
+  const setRoute = (r) => { try { localStorage.setItem("mrd_route", r); } catch (e) {} setRouteRaw(r); };
   const [sidebar, setSidebar] = useState(false);
   const lastAtRef = useRef(0);
   const [showSettings, setShowSettings] = useState(false);
