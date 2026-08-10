@@ -1218,7 +1218,7 @@ function TransfersTab({ company, db, save, user }) {
     }
     const at = new Date().toISOString().slice(0, 16).replace("T", " ");
     const entry = { action: status === "Approved" ? "قبول يدوي" : "رفض يدوي", by: me, at, override: !!(cur && cur.decidedBy && cur.decidedBy !== me && isAdmin) };
-    save({ ...db, transfers: db.transfers.map((t) => (t.id === id ? { ...t, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي"), decidedBy: me, decidedAt: at, auditLog: [...(t.auditLog || []), entry] } : t)) });
+    save({ ...db, transfers: db.transfers.map((tf) => (tf.id === id ? { ...tf, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي"), decidedBy: me, decidedAt: at, auditLog: [...(tf.auditLog || []), entry] } : tf)) });
   };
   const pending = list.filter((t) => t.status === "Pending").length;
   const [q, setQ] = useState("");
@@ -1270,7 +1270,7 @@ function TransfersTab({ company, db, save, user }) {
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-slate-800">{t("سجل التحويلات المرفوعة", "Submitted Transfers")} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
-          <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((t) => ({ المندوب: riderName(t.riderId), المبلغ: t.amount, المرجع: t.reference, التاريخ: t.date, الحالة: t.status, التصنيف: t.reconLabel || "", الموظف: t.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
+          <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1278,22 +1278,22 @@ function TransfersTab({ company, db, save, user }) {
               {[tr("المندوب"), tr("المبلغ"), tr("المرجع"), tr("التاريخ"), tr("الإيصال"), tr("التصنيف"), tr("إجراء")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
             </tr></thead>
             <tbody>
-              {list.map((t) => (
-                <tr key={t.id} className="border-b border-slate-50">
-                  <td className="py-2 px-3 font-semibold text-slate-800">{riderName(t.riderId)}</td>
-                  <td className="px-3">{omr(t.amount)}</td>
-                  <td className="px-3" dir="ltr">{t.reference}</td>
-                  <td className="px-3 text-slate-500">{t.date}</td>
-                  <td className="px-3">{t.receipt ? <button onClick={() => setViewReceipt(t.receipt)} className="text-slate-500 hover:text-slate-800"><Eye size={16} /></button> : "—"}</td>
+              {list.map((tf) => (
+                <tr key={tf.id} className="border-b border-slate-50">
+                  <td className="py-2 px-3 font-semibold text-slate-800">{riderName(tf.riderId)}</td>
+                  <td className="px-3">{omr(tf.amount)}</td>
+                  <td className="px-3" dir="ltr">{tf.reference}</td>
+                  <td className="px-3 text-slate-500">{tf.date}</td>
+                  <td className="px-3">{tf.receipt ? <button onClick={() => setViewReceipt(tf.receipt)} className="text-slate-500 hover:text-slate-800"><Eye size={16} /></button> : "—"}</td>
                   <td className="px-3">
-                    {t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}
-                    {t.decidedBy && <div className="text-[10px] text-slate-400 mt-1">{t("بواسطة", "by")}: {t.decidedBy}</div>}
+                    {tf.reconLabel ? <Pill color={tf.status === "Approved" ? "#0f9d58" : tf.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(tf.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}
+                    {tf.decidedBy && <div className="text-[10px] text-slate-400 mt-1">{t("بواسطة", "by")}: {tf.decidedBy}</div>}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1 items-center">
-                      <button onClick={() => setStatus(t.id, "Approved")} title={tr("قبول")} className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
-                      <button onClick={() => setStatus(t.id, "Rejected")} title={tr("رفض")} className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
-                      {t.auditLog && t.auditLog.length > 0 && <button onClick={() => setViewAudit(t)} title={t("سجل التدقيق", "Audit log")} className="text-slate-400 hover:text-slate-700"><Clock size={15} /></button>}
+                      <button onClick={() => setStatus(tf.id, "Approved")} title={tr("قبول")} className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
+                      <button onClick={() => setStatus(tf.id, "Rejected")} title={tr("رفض")} className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
+                      {tf.auditLog && tf.auditLog.length > 0 && <button onClick={() => setViewAudit(tf)} title={t("سجل التدقيق", "Audit log")} className="text-slate-400 hover:text-slate-700"><Clock size={15} /></button>}
                     </div>
                   </td>
                 </tr>
