@@ -962,14 +962,39 @@ function Riders({ db, save, company, user }) {
     save({ ...db, riders: db.riders.filter((r) => !ids.has(r.id)), archive: [...(db.archive || []), ...moved] });
     setResetOpen(false); setResetWord("");
   };
+  const normP = (x) => String(x || "").replace(/\D/g, "");
+  const dupRider = (phone, civil, exceptId) => {
+    const p = normP(phone), c = String(civil || "").trim();
+    const inRiders = db.riders.find((x) => x.id !== exceptId && ((p && normP(x.phone) === p) || (c && String(x.civil || "").trim() === c)));
+    if (inRiders) return { where: t("المناديب", "riders"), name: inRiders.name };
+    const inReg = (db.registrations || []).find((x) => !x.rejected && ((p && normP(x.phone) === p) || (c && String(x.idNumber || "").trim() === c)));
+    if (inReg) return { where: t("طلبات التسجيل", "registration"), name: inReg.fullName };
+    return null;
+  };
   const submit = () => {
     const r = { ...editing };
     if (!r.name || !r.phone) return alert(tr("الاسم ورقم الهاتف مطلوبان"));
+    const dup = dupRider(r.phone, r.civil, r.id);
+    if (dup) return alert(t("مندوب مسجّل سابقاً بنفس الهاتف أو الرقم المدني (" + dup.name + " — في " + dup.where + "). لا يمكن التكرار.", "Already registered with same phone or civil ID (" + dup.name + " — in " + dup.where + "). Duplicate not allowed."));
     if (!r.username) r.username = r.phone;
     const riders = r.id ? db.riders.map((x) => (x.id === r.id ? r : x)) : [...db.riders, { ...r, id: uid(), lastWorked: null }];
     save({ ...db, riders }); setEditing(null);
   };
-  const addBulk = (news) => { save({ ...db, riders: [...db.riders, ...news] }); setBulk(false); };
+  const addBulk = (news) => {
+    const seen = new Set();
+    const clean = []; const skipped = [];
+    news.forEach((n) => {
+      const p = normP(n.phone), c = String(n.civil || "").trim();
+      const key = p + "|" + c;
+      const dup = dupRider(n.phone, n.civil, null) || (p && seen.has(p)) || (c && seen.has("c:" + c));
+      if (dup) { skipped.push(n.name || n.phone); return; }
+      if (p) seen.add(p); if (c) seen.add("c:" + c);
+      clean.push(n);
+    });
+    if (clean.length) save({ ...db, riders: [...db.riders, ...clean] });
+    setBulk(false);
+    if (skipped.length) alert(t("تم تخطّي " + skipped.length + " مندوب مكرّر (مسجّلين سابقاً): ", "Skipped " + skipped.length + " duplicate(s) already registered: ") + skipped.join("، "));
+  };
   return (
     <div className="space-y-4">
       <datalist id="mrd-areas">{allAreas.map((a) => <option key={a} value={a} />)}</datalist>
