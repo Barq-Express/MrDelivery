@@ -3051,7 +3051,7 @@ function sidebarFor(user, db) {
   }
   return items;
 }
-const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, areas: MapPin, hr: Users, archive: Trash2 };
+const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, areas: MapPin, hr: Users, myhr: CalendarCheck, archive: Trash2 };
 
 const REG_LINK_FOR = { "Snoonu": "snoonu-tDKVbKhZ", "Talabat": "talabat-BhM5lYFt", "Aramex": "aramex-f_i83gxJ" };
 const REG_LINKS = { "snoonu-tDKVbKhZ": "Snoonu", "talabat-BhM5lYFt": "Talabat", "aramex-f_i83gxJ": "Aramex" };
@@ -3333,7 +3333,7 @@ export default function App() {
         </div>
         <nav className="p-3 space-y-1">
           {nav.map((n) => {
-            const Icon = ICON_FOR[n.kind]; const active = current === n.key;
+            const Icon = ICON_FOR[n.kind] || Building2; const active = current === n.key;
             const color = n.kind === "company" ? CMETA[n.company].color : BRAND.orange;
             return (
               <button key={n.key} onClick={() => { setRoute(n.key); setSidebar(false); }}
