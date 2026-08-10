@@ -2151,7 +2151,7 @@ function Employees({ db, save, user }) {
   const [editing, setEditing] = useState(null);
   const emps = db.employees || [];
   const allAreas = Array.from(new Set(db.riders.map((r) => r.area).filter(Boolean))).sort();
-  const blank = { name: "", phone: "", company: "Talabat", area: "", roleType: "Supervisor", scope: "all", riderIds: [], notes: "" };
+  const blank = { name: "", phone: "", email: "", company: "Talabat", area: "", roleType: "Supervisor", scope: "all", riderIds: [], notes: "" };
   const list = emps.filter((e) => (cf === "all" || e.company === cf) && (af === "all" || (e.area || "") === af) && (e.name.includes(q) || (e.phone || "").includes(q)));
   const submit = () => {
     const e = { ...editing };
@@ -2301,6 +2301,7 @@ function Employees({ db, save, user }) {
           <div className="grid grid-cols-2 gap-4">
             <Field label={tr("الاسم")}><input className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></Field>
             <Field label={tr("رقم الهاتف")}><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
+            <Field label={t("بريد حساب الدخول (للربط)", "Login email (to link)")}><input className={inputCls} dir="ltr" value={editing.email || ""} onChange={(e) => setEditing({ ...editing, email: e.target.value })} placeholder="name@mrd.com" /></Field>
             <Field label={tr("الشركة المسؤول عنها")}><select className={inputCls} value={editing.company} onChange={(e) => setEditing({ ...editing, company: e.target.value, riderIds: [] })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
             <Field label={tr("المنطقة / المحافظة")}><select className={inputCls} value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value, riderIds: [] })}><option value="">{t("— اختر المنطقة —", "— select area —")}</option>{(db.areas || []).map((a) => <option key={a} value={a}>{a}</option>)}{editing.area && !(db.areas || []).includes(editing.area) && <option value={editing.area}>{editing.area}</option>}</select></Field>
             <Field label={tr("نوع المسؤولية")}><select className={inputCls} value={editing.roleType} onChange={(e) => setEditing({ ...editing, roleType: e.target.value })}>{EMP_ROLES.map(([v, l]) => <option key={v} value={v}>{tr(l)}</option>)}</select></Field>
@@ -3209,7 +3210,11 @@ export default function App() {
   useEffect(() => {
     if (!session) { setStaff(null); setDb(null); return; }
     const email = session.user.email;
-    const resolveProf = (norm) => (norm && norm.staff && norm.staff[email]) || STAFF_BY_EMAIL[email] || { role: "Operations Manager", name: email, company: null };
+    const resolveProf = (norm) => {
+      const base = (norm && norm.staff && norm.staff[email]) || STAFF_BY_EMAIL[email] || { role: "Operations Manager", name: email, company: null };
+      const er = norm && norm.employees && norm.employees.find((x) => x.email && x.email.trim().toLowerCase() === email.toLowerCase());
+      return er && er.name ? { ...base, name: er.name } : base;
+    };
     const p0 = resolveProf(null);
     setStaff({ ...p0, email });
     supabase.from("app_state").select("data, updated_at").eq("id", APP_ROW_ID).single().then(({ data }) => {
@@ -3227,7 +3232,9 @@ export default function App() {
           lastAtRef.current = t;
           const norm = normalizeDB(payload.new.data);
           setDb(norm);
-          const prof = (norm && norm.staff && norm.staff[email]) || STAFF_BY_EMAIL[email] || { role: "Operations Manager", name: email, company: null };
+          const baseP = (norm && norm.staff && norm.staff[email]) || STAFF_BY_EMAIL[email] || { role: "Operations Manager", name: email, company: null };
+          const erP = norm && norm.employees && norm.employees.find((x) => x.email && x.email.trim().toLowerCase() === email.toLowerCase());
+          const prof = erP && erP.name ? { ...baseP, name: erP.name } : baseP;
           setStaff({ ...prof, email });
         }
       }).subscribe();
