@@ -23,6 +23,9 @@ const COMPANIES = ["Talabat", "Snoonu", "Aramex"];
 const HOUR_RATE = 2.41; // قيمة ساعة الدوام للفول تايم (ريال)
 const ACCEPT_MIN = 90; // الحد الأدنى لمعدل القبول %
 const HOURS_MIN = 8;   // الحد الأدنى للساعات النشطة يومياً
+const HOURS_CAP = 8;   // سقف الساعات المحسوبة يومياً للفول تايم
+const FULL_MONTH_HOURS = 176; // عند بلوغها يُعتبر الراتب كاملاً
+const FULL_MONTH_SALARY = 425; // الراتب الشهري الكامل (ريال)
 const EXCUSE_TYPES = [["sick", "إجازة مرضية", "Sick Leave"], ["normal", "إجازة اعتيادية", "Leave"], ["emergency", "ظرف طارئ", "Emergency"], ["other", "أخرى", "Other"]];
 const excuseLabel = (k) => { const e = EXCUSE_TYPES.find((x) => x[0] === k); return e ? t(e[1], e[2]) : k; };
 const BANKS = [
@@ -518,7 +521,9 @@ function riderMoney(db, riderId) {
   const rider = db.riders.find((r) => r.id === riderId);
   const rows = db.imports.flatMap((i) => i.results).filter((r) => r.riderId === riderId);
   const orders = rows.reduce((a, r) => a + (r.orders || 0), 0);
-  const hours = rows.reduce((a, r) => a + (Number(r.hours) || 0), 0);
+  const hoursRaw = rows.reduce((a, r) => a + (Number(r.hours) || 0), 0);           // الساعات الأصلية من الشيت
+  const hoursCapped = rows.reduce((a, r) => a + Math.min(Number(r.hours) || 0, HOURS_CAP), 0); // بحد أقصى 8/يوم
+  const hours = hoursCapped;                                                        // المحسوبة للراتب
   const codToTransfer = rows.reduce((a, r) => a + (r.transferDue || 0), 0);
   const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved").reduce((a, t) => a + t.amount, 0);
   let earn = 0;
@@ -528,18 +533,18 @@ function riderMoney(db, riderId) {
       const rate = Number(rider.commission) > 0 ? Number(rider.commission) : (defRate[rider.company] || 0);
       earn = orders * rate;
     } else {
-      earn = hours * HOUR_RATE;
+      earn = hoursCapped >= FULL_MONTH_HOURS ? FULL_MONTH_SALARY : hoursCapped * HOUR_RATE; // سقف الراتب الشهري
     }
   }
-  const hoursPay = hours * HOUR_RATE;
+  const hoursPay = rider && rider.type === "Full Time" ? earn : hoursCapped * HOUR_RATE;
   const paidDues = (db.payouts || []).filter((p) => p.riderId === riderId).reduce((a, p) => a + (Number(p.amount) || 0), 0);
-  return { orders, hours, hoursPay, codToTransfer, transferred, owed: codToTransfer - transferred, earn, paidDues, duesRemaining: earn - paidDues };
+  return { orders, hours, hoursRaw, hoursCapped, hoursPay, codToTransfer, transferred, owed: codToTransfer - transferred, earn, paidDues, duesRemaining: earn - paidDues };
 }
 
 /* ============================================================
    Excel importer (per company)
    ============================================================ */
-function ExcelImporter({ company, riders, onApply }) {
+function ExcelImporter({ company, riders, onApply, onAddRider }) {
   const [sheetDate, setSheetDate] = useState(todayStr());
   const [headers, setHeaders] = useState(null);
   const [rows, setRows] = useState([]);
@@ -628,6 +633,7 @@ function ExcelImporter({ company, riders, onApply }) {
       </div>
       {headers && (
         <div className="mt-5 border-t border-slate-100 pt-4">
+          {(() => { const unm = rows.filter((r) => !matchRider(r)).length; return unm > 0 ? <div className="mb-3 p-3 rounded-lg text-sm" style={{ background: "#fff7ed", color: "#9a3412" }}>⚠️ {t("يوجد", "There are")} <b>{unm}</b> {t("مندوب في الشيت غير مسجّلين لديك. اضغط \"تسجيل الآن\" بجانب كل واحد لتسجيله فوراً، وستظهر طلباته مباشرة.", "rider(s) in the sheet not registered. Click \"Register now\" next to each to add them instantly; their orders will attach immediately.")}</div> : null; })()}
           <p className="text-xs text-slate-500 mb-3">{tr("طابق الأعمدة")} ({rows.length} {tr("صف")}):</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Field label={t("ID الشركة", "Company ID")}><select className={inputCls} value={map.id} onChange={(e) => setMap({ ...map, id: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
@@ -654,7 +660,7 @@ function ExcelImporter({ company, riders, onApply }) {
                       <td className="px-2"><input type="number" step="0.001" className="w-24 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "cod")} onChange={(e) => setVal(i, "cod", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="0.5" className="w-16 rounded border px-2 py-1" style={{ borderColor: (rider && rider.type === "Full Time" && Number(valOf(r, i, "hours")) > 0 && Number(valOf(r, i, "hours")) < HOURS_MIN) ? "#c0341d" : "#e2e8f0", color: (rider && rider.type === "Full Time" && Number(valOf(r, i, "hours")) > 0 && Number(valOf(r, i, "hours")) < HOURS_MIN) ? "#c0341d" : "inherit" }} value={valOf(r, i, "hours")} onChange={(e) => setVal(i, "hours", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="1" className="w-16 rounded border px-2 py-1" style={{ borderColor: (rider && rider.type === "Full Time" && Number(valOf(r, i, "accept")) > 0 && Number(valOf(r, i, "accept")) < ACCEPT_MIN) ? "#c0341d" : "#e2e8f0", color: (rider && rider.type === "Full Time" && Number(valOf(r, i, "accept")) > 0 && Number(valOf(r, i, "accept")) < ACCEPT_MIN) ? "#c0341d" : "inherit" }} value={valOf(r, i, "accept")} onChange={(e) => setVal(i, "accept", e.target.value)} /></td>
-                      <td className="px-2">{rider ? <span style={{ color: "#0f9d58" }}>✓</span> : <span style={{ color: "#c0341d" }}>{tr("غير مسجل")}</span>}</td>
+                      <td className="px-2">{rider ? <span style={{ color: "#0f9d58" }}>✓</span> : (onAddRider ? <button onClick={() => { const keyVal = String(r[map.key] || "").trim(); const idVal = String(r[map.id] || "").trim(); const isPhone = /^[0-9+\-\s]{6,}$/.test(keyVal); onAddRider({ name: isPhone ? (idVal || keyVal) : keyVal, phone: isPhone ? keyVal.replace(/\D/g, "") : "", companyId: idVal, company, type: "Freelancer", status: "Active", area: "", commission: "", bank: "", bankName: "", swift: "", joinDate: todayStr(), password: "1234", username: isPhone ? keyVal.replace(/\D/g, "") : keyVal }); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#0f9d5822", color: "#0f9d58" }}>+ {t("تسجيل الآن", "Register now")}</button> : <span style={{ color: "#c0341d" }}>{tr("غير مسجل")}</span>)}</td>
                     </tr>
                   );
                 })}
@@ -1082,6 +1088,12 @@ function Riders({ db, save, company, user }) {
             <Field label={t("تاريخ الانضمام", "Join Date")}><input type="date" className={inputCls} value={editing.joinDate || ""} onChange={(e) => setEditing({ ...editing, joinDate: e.target.value })} /></Field>
             <Field label={t("تاريخ توقيع العقد", "Contract Sign Date")}><input type="date" className={inputCls} value={editing.contractDate || ""} onChange={(e) => setEditing({ ...editing, contractDate: e.target.value })} /></Field>
             {(!editing.id || (user && user.role === "Admin")) && <Field label={editing.id ? tr("كلمة مرور المندوب") : t("كلمة المرور الأولية", "Initial Password")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>}
+            {user && user.role === "Admin" && editing.id && <div className="col-span-2 p-3 rounded-lg" style={{ background: editing.bankLocked ? "#f0fdf4" : "#fef9c3" }}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">{editing.bankLocked ? t("🔒 البيانات البنكية مؤكّدة ومقفلة", "🔒 Bank details confirmed & locked") : t("🔓 البيانات البنكية مفتوحة للتعديل", "🔓 Bank details open for editing")}</span>
+                <Btn kind="ghost" size="sm" onClick={() => setEditing({ ...editing, bankLocked: !editing.bankLocked })}>{editing.bankLocked ? t("فتح الإذن للمندوب", "Unlock for rider") : t("قفل", "Lock")}</Btn>
+              </div>
+            </div>}
             <div className="col-span-2"><Field label={tr("ملاحظات")}><textarea className={inputCls} rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field></div>
             <div className="col-span-2 flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>{tr("إلغاء")}</Btn><Btn onClick={submit}>{tr("حفظ")}</Btn></div>
           </div>
@@ -1151,7 +1163,7 @@ function OrdersTab({ company, db, save }) {
   return (
     <div className="space-y-5">
       <Card className="p-4 text-sm text-slate-600">{note}</Card>
-      <ExcelImporter company={company} riders={db.riders} onApply={onApply} />
+      <ExcelImporter company={company} riders={db.riders} onApply={onApply} onAddRider={(nr) => { const p = String(nr.phone || "").replace(/\D/g, ""); const c = String(nr.companyId || "").trim(); const exists = db.riders.some((x) => (p && String(x.phone).replace(/\D/g, "") === p) || (c && (x.companyId || "") === c)); if (exists) { alert(t("هذا المندوب مسجّل بالفعل", "This rider already exists")); return; } save({ ...db, riders: [...db.riders, { ...nr, id: uid(), lastWorked: null }] }); }} />
       {latest && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
@@ -1596,9 +1608,108 @@ const CTABS = [
   { key: "transfers", ar: tr("COD والتحويلات"), en: "COD & Transfers", icon: Wallet },
   { key: "recon", ar: tr("المطابقة البنكية"), en: "Bank Reconciliation", icon: ShieldCheck },
   { key: "attendance", ar: tr("الحضور والنشاط"), en: "Attendance", icon: CalendarCheck },
+  { key: "monthly", ar: t("الملخص الشهري", "Monthly Summary"), en: "Monthly Summary", icon: FileBarChart },
   { key: "shifts", ar: tr("الشفتات"), en: "Shifts", icon: Clock },
   { key: "reports", ar: tr("التقارير"), en: "Reports", icon: FileBarChart },
 ];
+
+function MonthlyTab({ company, db }) {
+  const [month, setMonth] = useState(curMonthStr());
+  const [riderId, setRiderId] = useState("");
+  const rdrs = db.riders.filter((r) => r.company === company);
+  // بيانات الشهر لكل مندوب
+  const monthRows = (rid) => db.imports
+    .filter((im) => im.company === company && (im.date || "").slice(0, 7) === month)
+    .map((im) => { const rr = im.results.find((x) => x.riderId === rid); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0, accept: Number(rr.accept) || 0 } : null; })
+    .filter(Boolean)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const summarize = (rid) => {
+    const rows = monthRows(rid);
+    const orders = rows.reduce((s, x) => s + x.orders, 0);
+    const cod = rows.reduce((s, x) => s + x.cod, 0);
+    const hoursRaw = rows.reduce((s, x) => s + x.hours, 0);
+    const hoursCapped = rows.reduce((s, x) => s + Math.min(x.hours, HOURS_CAP), 0);
+    const accDays = rows.filter((x) => x.accept > 0);
+    const avgAccept = accDays.length ? Math.round(accDays.reduce((s, x) => s + x.accept, 0) / accDays.length) : 0;
+    const rider = db.riders.find((r) => r.id === rid);
+    let earn = 0;
+    if (rider) { if (rider.type === "Freelancer") { const defRate = { Snoonu: 1.4, Aramex: 0.7, Talabat: 0 }; const rate = Number(rider.commission) > 0 ? Number(rider.commission) : (defRate[rider.company] || 0); earn = orders * rate; } else { earn = hoursCapped >= FULL_MONTH_HOURS ? FULL_MONTH_SALARY : hoursCapped * HOUR_RATE; } }
+    return { orders, cod, hoursRaw, hoursCapped, avgAccept, earn, days: rows.length };
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="font-bold text-slate-800 flex items-center gap-2"><FileBarChart size={18} color={BRAND.blue} /> {t("الملخص الشهري", "Monthly Summary")} — {cLabel(company)}</h3>
+        <div className="flex gap-2 items-end flex-wrap">
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <select value={riderId} onChange={(e) => setRiderId(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">{t("كل المناديب", "All riders")}</option>{rdrs.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+        </div>
+      </div>
+
+      {!riderId ? (
+        <>
+          <div className="flex justify-end">
+            <Btn kind="ghost" size="sm" onClick={() => exportExcel(rdrs.map((r) => { const s = summarize(r.id); return { المندوب: r.name, النوع: r.type, أيام_العمل: s.days, الطلبات: s.orders, COD: s.cod, الساعات_المحسوبة: s.hoursCapped, الساعات_الفعلية: s.hoursRaw, متوسط_القبول: s.avgAccept, المستحق: s.earn }; }).filter((x) => x.أيام_العمل > 0), "Monthly_" + company + "_" + month)}><Download size={14} /> Excel</Btn>
+          </div>
+          <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), tr("النوع"), t("أيام", "Days"), t("الطلبات", "Orders"), "COD", t("الساعات", "Hours"), t("متوسط القبول", "Avg accept"), t("المستحق", "Earnings")].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>
+              {rdrs.map((r) => { const s = summarize(r.id); if (s.days === 0) return null; const isFT = r.type === "Full Time"; return (
+                <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => setRiderId(r.id)}>
+                  <td className="py-3 px-3 font-semibold text-slate-800">{r.name}</td>
+                  <td className="px-3 text-slate-600">{r.type}</td>
+                  <td className="px-3">{s.days}</td>
+                  <td className="px-3">{s.orders}</td>
+                  <td className="px-3">{omr(s.cod)}</td>
+                  <td className="px-3">{isFT ? <span>{s.hoursCapped}{s.hoursRaw !== s.hoursCapped ? <span className="text-[10px] text-slate-400"> ({s.hoursRaw})</span> : ""}</span> : "—"}</td>
+                  <td className="px-3" style={{ color: isFT && s.avgAccept > 0 && s.avgAccept < ACCEPT_MIN ? "#c0341d" : "inherit" }}>{isFT && s.avgAccept ? s.avgAccept + "%" : "—"}</td>
+                  <td className="px-3 font-bold" style={{ color: "#0f9d58" }}>{omr(s.earn)}</td>
+                </tr>
+              ); })}
+              {rdrs.every((r) => summarize(r.id).days === 0) && <tr><td colSpan={8} className="py-8 text-center text-slate-400">{t("لا يوجد بيانات لهذا الشهر", "No data for this month")}</td></tr>}
+            </tbody>
+          </table></div></Card>
+        </>
+      ) : (() => {
+        const r = db.riders.find((x) => x.id === riderId); const s = summarize(riderId); const rows = monthRows(riderId); const isFT = r && r.type === "Full Time";
+        return (
+          <>
+            <button onClick={() => setRiderId("")} className="text-sm text-slate-500">← {t("رجوع لكل المناديب", "Back to all")}</button>
+            <Card className="p-5">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <div><div className="font-bold text-lg text-slate-800">{r ? r.name : "—"}</div><div className="text-xs text-slate-400">{r ? r.type : ""} · {month}</div></div>
+                <Btn kind="ghost" size="sm" onClick={() => exportExcel(rows.map((x) => ({ التاريخ: x.date, الطلبات: x.orders, COD: x.cod, الساعات_الفعلية: x.hours, الساعات_المحسوبة: Math.min(x.hours, HOURS_CAP), معدل_القبول: x.accept })), "Rider_" + (r ? r.name : "") + "_" + month)}><Download size={14} /> Excel</Btn>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-center mb-4">
+                <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("أيام العمل", "Work days")}</div><div className="font-bold">{s.days}</div></div>
+                <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("الطلبات", "Orders")}</div><div className="font-bold">{s.orders}</div></div>
+                <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">COD</div><div className="font-bold">{omr(s.cod)}</div></div>
+                {isFT && <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("الساعات", "Hours")}</div><div className="font-bold">{s.hoursCapped}{s.hoursRaw !== s.hoursCapped ? <span className="text-[10px] text-slate-400"> ({s.hoursRaw})</span> : ""}</div></div>}
+                <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("المستحق", "Earnings")}</div><div className="font-bold" style={{ color: "#0f9d58" }}>{omr(s.earn)}</div></div>
+              </div>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("التاريخ", "Date"), t("الطلبات", "Orders"), "COD", ...(isFT ? [t("الساعات", "Hours"), t("القبول %", "Accept %")] : [])].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+                <tbody>
+                  {rows.map((x, i) => { const capped = Math.min(x.hours, HOURS_CAP); const over = x.hours > HOURS_CAP; const hRed = isFT && x.hours > 0 && x.hours < HOURS_MIN; const aRed = isFT && x.accept > 0 && x.accept < ACCEPT_MIN; return (
+                    <tr key={i} className="border-b border-slate-50">
+                      <td className="py-2 px-3" dir="ltr">{x.date}</td>
+                      <td className="px-3">{x.orders}</td>
+                      <td className="px-3">{omr(x.cod)}</td>
+                      {isFT && <td className="px-3" style={{ color: hRed ? "#c0341d" : "inherit", fontWeight: hRed ? 700 : 400 }}>{capped}{over ? <span className="text-[10px] text-slate-400"> ({x.hours})</span> : ""}{hRed ? " 🔴" : ""}</td>}
+                      {isFT && <td className="px-3" style={{ color: aRed ? "#c0341d" : "inherit" }}>{x.accept ? x.accept + "%" : "—"}{aRed ? " 🔴" : ""}</td>}
+                    </tr>
+                  ); })}
+                  {rows.length === 0 && <tr><td colSpan={isFT ? 5 : 3} className="py-8 text-center text-slate-400">{t("لم يعمل هذا الشهر", "No work this month")}</td></tr>}
+                </tbody>
+              </table></div>
+            </Card>
+          </>
+        );
+      })()}
+    </div>
+  );
+}
 
 function DuesTab({ company, db, save, user }) {
   const canPay = user && (user.role === "Admin" || user.role === "Operations Manager" || user.role === "Finance");
@@ -1704,6 +1815,7 @@ function CompanyWindow({ company, db, save, user }) {
         {tab === "dues" && <DuesTab company={company} db={db} save={save} user={user} />}
         {tab === "recon" && <ReconTab company={company} db={db} save={save} />}
         {tab === "attendance" && <AttendanceTab company={company} db={db} save={save} />}
+        {tab === "monthly" && <MonthlyTab company={company} db={db} />}
         {tab === "shifts" && <ShiftsWindow db={db} save={save} company={company} />}
         {tab === "reports" && <ReportsScoped db={db} company={company} />}
       </div>
@@ -1813,9 +1925,11 @@ function RiderPortal({ db, riderId, creds, refresh }) {
   const [bankMsg, setBankMsg] = useState("");
   const [bankBusy, setBankBusy] = useState(false);
   const saveBank = () => {
+    if (rider && rider.bankLocked) return;
+    if (!window.confirm(t("بعد الحفظ ستُقفل بياناتك البنكية، ولن تتمكن من تعديلها إلا بإذن من الإدارة. متأكد؟", "After saving, your bank details will be locked and you can't edit them without admin permission. Continue?"))) return;
     setBankBusy(true); setBankMsg("");
     supabase.rpc("rider_update_bank", { p_phone: creds.phone, p_password: creds.password, p_bankname: bankForm.bankName || "", p_bank: bankForm.bank || "", p_swift: bankForm.swift || "", p_holder: bankForm.holder || "" })
-      .then(({ data, error }) => { setBankBusy(false); if (error || !data) return setBankMsg(t("تعذّر الحفظ، حاول مرة أخرى", "Save failed, try again")); setBankMsg(t("✅ تم حفظ بياناتك البنكية", "✅ Bank details saved")); refresh(); });
+      .then(({ data, error }) => { setBankBusy(false); if (error || !data) return setBankMsg(t("تعذّر الحفظ، حاول مرة أخرى", "Save failed, try again")); if (data.locked) return setBankMsg(t("بياناتك مقفلة. تواصل مع الإدارة لفتح التعديل.", "Your details are locked. Contact admin to unlock.")); setBankMsg(t("✅ تم حفظ بياناتك البنكية وقفلها", "✅ Bank details saved and locked")); refresh(); });
   };
   const myTransfers = db.transfers.filter((t) => t.riderId === riderId).sort((a, b) => b.date.localeCompare(a.date));
   const lastRejected = myTransfers.find((t) => t.status === "Rejected");
@@ -1870,16 +1984,18 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         <div className="mt-4"><Btn onClick={submit}>{tr("إرسال التحويل")}</Btn></div>
       </Card>
       <Card className="p-5">
-        <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><Banknote size={18} /> {t("بياناتي البنكية", "My Bank Details")}</h3>
-        <p className="text-xs text-slate-500 mb-4">{t("عبّئ بياناتك البنكية بنفسك لضمان صحة التحويلات. أنت مسؤول عن صحتها.", "Fill your own bank details to ensure correct transfers. You are responsible for their accuracy.")}</p>
+        <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><Banknote size={18} /> {t("بياناتي البنكية", "My Bank Details")}{rider.bankLocked && <Pill color="#0f9d58">🔒 {t("مؤكّدة", "Confirmed")}</Pill>}</h3>
+        {rider.bankLocked
+          ? <p className="text-xs mb-4" style={{ color: "#0f9d58" }}>{t("بياناتك البنكية مؤكّدة ومقفلة. لتعديلها، تواصل مع الإدارة لفتح الإذن.", "Your bank details are confirmed and locked. To edit, contact admin to unlock.")}</p>
+          : <p className="text-xs text-slate-500 mb-4">{t("عبّئ بياناتك البنكية بنفسك لضمان صحة التحويلات. بعد التأكيد ستُقفل. أنت مسؤول عن صحتها.", "Fill your own bank details to ensure correct transfers. They lock after confirmation. You are responsible for their accuracy.")}</p>}
         <div className="grid md:grid-cols-2 gap-3">
-          <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={bankForm.bankName} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setBankForm({ ...bankForm, bankName: e.target.value, swift: b ? b.swift : bankForm.swift }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
-          <Field label={t("اسم صاحب الحساب", "Account Holder Name")}><input className={inputCls} value={bankForm.holder} onChange={(e) => setBankForm({ ...bankForm, holder: e.target.value })} /></Field>
-          <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} dir="ltr" value={bankForm.bank} onChange={(e) => setBankForm({ ...bankForm, bank: e.target.value })} /></Field>
-          <Field label={t("سويفت كود", "SWIFT Code")}><input className={inputCls} dir="ltr" value={bankForm.swift} onChange={(e) => setBankForm({ ...bankForm, swift: e.target.value })} placeholder={t("يُعبّأ تلقائياً من البنك", "auto-filled from bank")} /></Field>
+          <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} disabled={!!rider.bankLocked} value={bankForm.bankName} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setBankForm({ ...bankForm, bankName: e.target.value, swift: b ? b.swift : bankForm.swift }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
+          <Field label={t("اسم صاحب الحساب", "Account Holder Name")}><input className={inputCls} disabled={!!rider.bankLocked} value={bankForm.holder} onChange={(e) => setBankForm({ ...bankForm, holder: e.target.value })} /></Field>
+          <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} disabled={!!rider.bankLocked} dir="ltr" value={bankForm.bank} onChange={(e) => setBankForm({ ...bankForm, bank: e.target.value })} /></Field>
+          <Field label={t("سويفت كود", "SWIFT Code")}><input className={inputCls} disabled={!!rider.bankLocked} dir="ltr" value={bankForm.swift} onChange={(e) => setBankForm({ ...bankForm, swift: e.target.value })} placeholder={t("يُعبّأ تلقائياً من البنك", "auto-filled from bank")} /></Field>
         </div>
         {bankMsg && <p className="text-xs mt-3" style={{ color: bankMsg.charAt(0) === "✅" ? "#0f9d58" : "#c0341d" }}>{bankMsg}</p>}
-        <div className="mt-4"><Btn onClick={saveBank}>{bankBusy ? "..." : t("حفظ البيانات البنكية", "Save Bank Details")}</Btn></div>
+        {!rider.bankLocked && <div className="mt-4"><Btn onClick={saveBank}>{bankBusy ? "..." : t("حفظ وتأكيد البيانات", "Save & Confirm")}</Btn></div>}
       </Card>
 
       <Card className="p-5">
@@ -1898,12 +2014,12 @@ function RiderPortal({ db, riderId, creds, refresh }) {
             <div className="overflow-x-auto"><table className="w-full text-sm">
               <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("الطلبات"), tr("COD"), ...(isFT ? [tr("ساعات الدوام"), t("قبول %", "Accept %")] : [])].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
               <tbody>
-                {hist.map((h, i) => { const hRed = isFT && h.hours > 0 && h.hours < HOURS_MIN; const aRed = isFT && h.accept > 0 && h.accept < ACCEPT_MIN; return (
+                {hist.map((h, i) => { const capped = Math.min(h.hours, HOURS_CAP); const over = h.hours > HOURS_CAP; const hRed = isFT && h.hours > 0 && h.hours < HOURS_MIN; const aRed = isFT && h.accept > 0 && h.accept < ACCEPT_MIN; return (
                   <tr key={i} className="border-b border-slate-50">
                     <td className="py-2 px-3" dir="ltr">{h.date}</td>
                     <td className="px-3">{h.orders}</td>
                     <td className="px-3">{omr(h.cod)}</td>
-                    {isFT && <td className="px-3" style={{ color: hRed ? "#c0341d" : "inherit", fontWeight: hRed ? 700 : 400 }}>{h.hours}{hRed ? " 🔴" : ""}</td>}
+                    {isFT && <td className="px-3" style={{ color: hRed ? "#c0341d" : "inherit", fontWeight: hRed ? 700 : 400 }}>{capped}{over ? <span className="text-[10px] text-slate-400"> ({h.hours})</span> : ""}{hRed ? " 🔴" : ""}</td>}
                     {isFT && <td className="px-3" style={{ color: aRed ? "#c0341d" : "inherit", fontWeight: aRed ? 700 : 400 }}>{h.accept ? h.accept + "%" : "—"}{aRed ? " 🔴" : ""}</td>}
                   </tr>
                 ); })}
@@ -1911,23 +2027,34 @@ function RiderPortal({ db, riderId, creds, refresh }) {
                   <td className="py-2 px-3">{t("الإجمالي", "Total")}</td>
                   <td className="px-3">{m.orders}</td>
                   <td className="px-3">{omr(m.codToTransfer)}</td>
-                  {isFT && <td className="px-3">{m.hours} <span className="text-xs font-normal text-slate-500">= {omr(m.hoursPay)}</span></td>}
+                  {isFT && <td className="px-3">{m.hours} <span className="text-xs font-normal text-slate-500">= {omr(m.earn)}{m.hoursCapped >= FULL_MONTH_HOURS ? " (راتب كامل)" : ""}</span></td>}
                   {isFT && <td className="px-3" style={{ color: avgAccept > 0 && avgAccept < ACCEPT_MIN ? "#c0341d" : "inherit" }}>{avgAccept ? avgAccept + "%" : "—"}</td>}
                 </tr>
               </tbody>
             </table></div>
           );
         })()}
-        {rider.type === "Full Time" && (() => {
-          const hist = db.imports.map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { hours: Number(rr.hours) || 0, accept: Number(rr.accept) || 0 } : null; }).filter(Boolean);
-          const ftDays = hist.filter((h) => h.hours > 0 || h.accept > 0);
-          const avgAccept = ftDays.length ? Math.round(ftDays.reduce((s, h) => s + h.accept, 0) / ftDays.length) : 0;
-          const redDays = ftDays.filter((h) => (h.accept > 0 && h.accept < ACCEPT_MIN) || (h.hours > 0 && h.hours < HOURS_MIN)).length;
+        {(() => {
+          const isFT = rider.type === "Full Time";
+          const byMonth = {};
+          db.imports.forEach((im) => { const rr = im.results.find((x) => x.riderId === riderId); if (!rr) return; const mo = (im.date || "").slice(0, 7); if (!byMonth[mo]) byMonth[mo] = { orders: 0, cod: 0, hours: 0, accSum: 0, accCnt: 0 }; byMonth[mo].orders += rr.orders || 0; byMonth[mo].cod += rr.cod || 0; byMonth[mo].hours += Math.min(Number(rr.hours) || 0, HOURS_CAP); if ((Number(rr.accept) || 0) > 0) { byMonth[mo].accSum += Number(rr.accept); byMonth[mo].accCnt += 1; } });
+          const months = Object.keys(byMonth).sort().reverse();
+          if (months.length === 0) return null;
           return (
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-              <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("متوسط القبول", "Avg acceptance")}</div><div className="font-bold" style={{ color: avgAccept > 0 && avgAccept < ACCEPT_MIN ? "#c0341d" : BRAND.navy }}>{avgAccept ? avgAccept + "%" : "—"}</div></div>
-              <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("إجمالي الساعات", "Total hours")}</div><div className="font-bold">{m.hours}</div></div>
-              <div className="p-2 rounded-lg bg-slate-50"><div className="text-[11px] text-slate-500">{t("أيام دون المستوى", "Below-target days")}</div><div className="font-bold" style={{ color: redDays > 0 ? "#c0341d" : "#0f9d58" }}>{redDays}</div></div>
+            <div className="mt-4">
+              <h4 className="font-bold text-slate-700 text-sm mb-2">{t("الملخص الشهري", "Monthly Summary")}</h4>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("الشهر", "Month"), t("الطلبات", "Orders"), t("COD", "COD"), ...(isFT ? [t("إجمالي الساعات", "Hours"), t("متوسط القبول", "Avg accept")] : [])].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+                <tbody>{months.map((mo) => { const v = byMonth[mo]; const avg = v.accCnt ? Math.round(v.accSum / v.accCnt) : 0; return (
+                  <tr key={mo} className="border-b border-slate-50">
+                    <td className="py-2 px-3 font-semibold" dir="ltr">{mo}</td>
+                    <td className="px-3">{v.orders}</td>
+                    <td className="px-3">{omr(v.cod)}</td>
+                    {isFT && <td className="px-3">{v.hours}{v.hours >= FULL_MONTH_HOURS ? <span className="text-[10px] text-green-600"> ✓ {t("راتب كامل", "full")}</span> : ""}</td>}
+                    {isFT && <td className="px-3" style={{ color: avg > 0 && avg < ACCEPT_MIN ? "#c0341d" : "inherit" }}>{avg ? avg + "%" : "—"}</td>}
+                  </tr>
+                ); })}</tbody>
+              </table></div>
             </div>
           );
         })()}
