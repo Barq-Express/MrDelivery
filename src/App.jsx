@@ -23,9 +23,17 @@ const COMPANIES = ["Talabat", "Snoonu", "Aramex"];
 const HOUR_RATE = 2.41; // قيمة ساعة الدوام للفول تايم (ريال)
 const ACCEPT_MIN = 90; // الحد الأدنى لمعدل القبول %
 const HOURS_MIN = 8;   // الحد الأدنى للساعات النشطة يومياً
-const HOURS_CAP = 8;   // سقف الساعات المحسوبة يومياً للفول تايم
+const HOURS_CAP = 10;  // سقف الساعات المحسوبة يومياً (يحمي من أخطاء الشيت، ويسمح بالشفت الليلي المقسّم)
 const FULL_MONTH_HOURS = 176; // عند بلوغها يُعتبر الراتب كاملاً
 const FULL_MONTH_SALARY = 425; // الراتب الشهري الكامل (ريال)
+const PAYOUT_INFO = {
+  bankName: "بنك صحار الدولي",
+  holder: "KHADIJA JUMA",
+  account: "011010334735",
+  activePhone: "91927249",
+  iban: "OM440300000011010334735",
+  receiptPhone: "98219412",
+};
 const EXCUSE_TYPES = [["sick", "إجازة مرضية", "Sick Leave"], ["normal", "إجازة اعتيادية", "Leave"], ["emergency", "ظرف طارئ", "Emergency"], ["other", "أخرى", "Other"]];
 const excuseLabel = (k) => { const e = EXCUSE_TYPES.find((x) => x[0] === k); return e ? t(e[1], e[2]) : k; };
 const BANKS = [
@@ -2059,6 +2067,19 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           );
         })()}
       </Card>
+      <Card className="p-5" style={{ borderRight: "4px solid " + BRAND.orange }}>
+        <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Banknote size={18} color={BRAND.orange} /> {t("حساب تحويل الأموال (COD)", "COD Payment Account")}</h3>
+        <div className="space-y-1.5 text-sm">
+          <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">{t("اسم البنك", "Bank")}</span><span className="font-semibold">{PAYOUT_INFO.bankName}</span></div>
+          <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">{t("اسم الحساب", "Account name")}</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.holder}</span></div>
+          <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">{t("رقم الحساب", "Account no.")}</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.account}</span></div>
+          <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">{t("الرقم المفعّل للتحويل", "Active transfer no.")}</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.activePhone}</span></div>
+          <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">IBAN</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.iban}</span></div>
+          <div className="flex justify-between py-1"><span className="text-slate-500">{t("إرسال الإيصال على", "Send receipt to")}</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.receiptPhone}</span></div>
+        </div>
+        <div className="mt-3 p-2 rounded-lg text-xs font-semibold text-center" style={{ background: "#fff7ed", color: "#9a3412" }}>{t("التحويل يومياً بعد انتهاء العمل، وإرسال الإيصال على الرقم أعلاه.", "Transfer daily after work, and send the receipt to the number above.")}</div>
+      </Card>
+
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3">{tr("سجل التحويلات")}</h3>
         <div className="overflow-x-auto"><table className="w-full text-sm">
