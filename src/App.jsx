@@ -26,6 +26,7 @@ const HOURS_MIN = 8;   // الحد الأدنى للساعات النشطة يو
 const HOURS_CAP = 10;  // سقف الساعات المحسوبة يومياً (يحمي من أخطاء الشيت، ويسمح بالشفت الليلي المقسّم)
 const FULL_MONTH_HOURS = 176; // عند بلوغها يُعتبر الراتب كاملاً
 const FULL_MONTH_SALARY = 425; // الراتب الشهري الكامل (ريال)
+const pctAccept = (v) => { const n = Number(v) || 0; return n > 0 && n <= 1 ? Math.round(n * 100) : Math.round(n); }; // 1.0 (كسر إكسل) => 100%
 const PAYOUT_INFO = {
   bankName: "بنك صحار الدولي",
   holder: "KHADIJA JUMA",
@@ -411,7 +412,7 @@ function normalizeDB(db) {
   return {
     version: 3,
     riders: db.riders || SEED_RIDERS,
-    imports: db.imports || [],
+    imports: (db.imports || []).map((im) => ({ ...im, results: (im.results || []).map((r) => (r && r.accept != null && Number(r.accept) > 0 && Number(r.accept) <= 1 ? { ...r, accept: Math.round(Number(r.accept) * 100) } : r)) })),
     transfers: db.transfers || [],
     payouts: db.payouts || [],
     bankRows: { Talabat: b.Talabat || [], Snoonu: b.Snoonu || [], Aramex: b.Aramex || [] },
@@ -604,7 +605,7 @@ function ExcelImporter({ company, riders, onApply, onAddRider }) {
       const orders = Number(valOf(r, i, "orders")) || 0;
       const cod = Number(valOf(r, i, "cod")) || 0;
       const hours = Number(valOf(r, i, "hours")) || 0;
-      const accept = Number(valOf(r, i, "accept")) || 0;
+      const accept = pctAccept(valOf(r, i, "accept"));
       const transferDue = isTalabat ? (Number(r[map.due]) || cod) : cod;
       results.push({ riderId: rider ? rider.id : null, name: rider ? rider.name : String(r[map.key] || r[map.id]), matched: !!rider, orders, cod, hours, accept, transferDue });
       if (rider && (orders > 0 || cod > 0 || hours > 0)) matched.add(rider.id); // worked if orders/COD/hours
@@ -1152,7 +1153,7 @@ function OrdersTab({ company, db, save }) {
   const setRow = (i, which, v) => setEditImp((e) => ({ ...e, results: e.results.map((r, idx) => (idx === i ? { ...r, [which]: v } : r)) }));
   const saveImport = () => {
     const results = editImp.results.map((r) => {
-      const orders = Number(r.orders) || 0; const cod = Number(r.cod) || 0; const hours = Number(r.hours) || 0; const accept = Number(r.accept) || 0;
+      const orders = Number(r.orders) || 0; const cod = Number(r.cod) || 0; const hours = Number(r.hours) || 0; const accept = pctAccept(r.accept);
       const transferDue = company === "Talabat" ? (Number(r.transferDue) || cod) : cod;
       return { ...r, orders, cod, hours, accept, transferDue };
     });
@@ -1471,7 +1472,7 @@ function AttendanceTab({ company, db, save }) {
   const hasFile = db.imports.some((im) => im.company === company && im.date === date);
   const presentOn = (rid) => db.imports.some((im) => im.company === company && im.date === date && im.results.some((r) => r.riderId === rid && (r.orders > 0 || r.cod > 0))) || !!db.attendance[rid + ":" + date];
   const excuseOf = (rid) => (db.excuses || {})[rid + ":" + date];
-  const perfOn = (rid) => { for (const im of db.imports) { if (im.company === company && im.date === date) { const rr = im.results.find((x) => x.riderId === rid); if (rr) return { hours: Number(rr.hours) || 0, accept: Number(rr.accept) || 0 }; } } return { hours: 0, accept: 0 }; };
+  const perfOn = (rid) => { for (const im of db.imports) { if (im.company === company && im.date === date) { const rr = im.results.find((x) => x.riderId === rid); if (rr) return { hours: Number(rr.hours) || 0, accept: pctAccept(rr.accept) }; } } return { hours: 0, accept: 0 }; };
   const [excuseFor, setExcuseFor] = useState(null);
   const [exType, setExType] = useState("sick");
   const [exNote, setExNote] = useState("");
@@ -1628,7 +1629,7 @@ function MonthlyTab({ company, db }) {
   // بيانات الشهر لكل مندوب
   const monthRows = (rid) => db.imports
     .filter((im) => im.company === company && (im.date || "").slice(0, 7) === month)
-    .map((im) => { const rr = im.results.find((x) => x.riderId === rid); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0, accept: Number(rr.accept) || 0 } : null; })
+    .map((im) => { const rr = im.results.find((x) => x.riderId === rid); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0, accept: pctAccept(rr.accept) } : null; })
     .filter(Boolean)
     .sort((a, b) => (a.date < b.date ? -1 : 1));
   const summarize = (rid) => {
@@ -1734,12 +1735,44 @@ function DuesTab({ company, db, save, user }) {
     setPayFor(null); setAmt(""); setNote("");
   };
   const delPayout = (pid) => { if (window.confirm(tr("حذف هذه الدفعة؟"))) save({ ...db, payouts: (db.payouts || []).filter((p) => p.id !== pid) }); };
+  const dlPayoutTemplate = () => {
+    const rs = db.riders.filter((r) => r.company === company && r.status === "Active");
+    const header = ["الايدي / ID", "الهاتف / Phone", "الاسم / Name", "المتبقي / Remaining", "المبلغ المدفوع / Paid Amount", "ملاحظة / Note"];
+    const body = rs.map((r) => { const m = riderMoney(db, r.id); return [r.companyId || "", r.phone, r.name, m.duesRemaining, "", ""]; });
+    const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+    ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "payouts");
+    XLSX.writeFile(wb, "Payouts-" + company + "-" + todayStr() + ".xlsx");
+  };
+  const uploadPayouts = (file) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "binary" });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+        const recs = []; let skipped = 0;
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i]; if (!r) continue;
+          const idVal = String(r[0] || "").trim(), phoneVal = String(r[1] || "").replace(/\D/g, ""), amt = Number(r[4]) || 0, note = String(r[5] || "").trim();
+          if (amt <= 0) continue;
+          const rider = db.riders.find((x) => x.company === company && ((idVal && (x.companyId || "") === idVal) || (phoneVal && String(x.phone).replace(/\D/g, "") === phoneVal)));
+          if (!rider) { skipped++; continue; }
+          recs.push({ id: uid(), riderId: rider.id, amount: amt, note: note || t("دفعة جماعية", "bulk payout"), by: (user && (user.name || user.email)) || "", at: new Date().toISOString().slice(0, 16).replace("T", " ") });
+        }
+        if (recs.length) save({ ...db, payouts: [...(db.payouts || []), ...recs] });
+        alert(t("تم تسجيل " + recs.length + " دفعة." + (skipped ? " تم تخطّي " + skipped + " صف (مندوب غير معروف أو بدون مبلغ)." : ""), "Recorded " + recs.length + " payment(s)." + (skipped ? " Skipped " + skipped + " row(s)." : "")));
+      } catch (e) { alert(t("تعذّرت قراءة الملف", "Could not read the file")); }
+    };
+    reader.readAsBinaryString(file);
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="font-bold text-slate-800 flex items-center gap-2"><Wallet size={18} color={BRAND.orange} /> {t("مستحقات المناديب", "Rider Dues")} — {cLabel(company)}</h3>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Btn kind="ghost" onClick={dlPayoutTemplate}><Download size={15} /> {t("نموذج الدفع", "Payout template")}</Btn>
+          <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold border border-slate-200 bg-white cursor-pointer"><Upload size={15} /> {t("رفع شيت الدفع", "Upload payouts")}<input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { if (e.target.files[0]) uploadPayouts(e.target.files[0]); e.target.value = ""; }} /></label>
           <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-52" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <Btn kind="ghost" onClick={() => exportExcel(list.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, النوع: r.type, المستحق: m.earn, المدفوع: m.paidDues, المتبقي: m.duesRemaining, البنك: r.bankName || "", الحساب: r.bank || "" }; }), "Dues_" + company)}><Download size={15} /> Excel</Btn>
         </div>
@@ -2010,7 +2043,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل العمل", "Work History")}</h3>
         {(() => {
           const hist = db.imports
-            .map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0, accept: Number(rr.accept) || 0 } : null; })
+            .map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0, accept: pctAccept(rr.accept) } : null; })
             .filter(Boolean)
             .sort((a, b) => (a.date < b.date ? 1 : -1));
           const ftDays = hist.filter((h) => h.hours > 0 || h.accept > 0);
@@ -2045,7 +2078,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         {(() => {
           const isFT = rider.type === "Full Time";
           const byMonth = {};
-          db.imports.forEach((im) => { const rr = im.results.find((x) => x.riderId === riderId); if (!rr) return; const mo = (im.date || "").slice(0, 7); if (!byMonth[mo]) byMonth[mo] = { orders: 0, cod: 0, hours: 0, accSum: 0, accCnt: 0 }; byMonth[mo].orders += rr.orders || 0; byMonth[mo].cod += rr.cod || 0; byMonth[mo].hours += Math.min(Number(rr.hours) || 0, HOURS_CAP); if ((Number(rr.accept) || 0) > 0) { byMonth[mo].accSum += Number(rr.accept); byMonth[mo].accCnt += 1; } });
+          db.imports.forEach((im) => { const rr = im.results.find((x) => x.riderId === riderId); if (!rr) return; const mo = (im.date || "").slice(0, 7); if (!byMonth[mo]) byMonth[mo] = { orders: 0, cod: 0, hours: 0, accSum: 0, accCnt: 0 }; byMonth[mo].orders += rr.orders || 0; byMonth[mo].cod += rr.cod || 0; byMonth[mo].hours += Math.min(Number(rr.hours) || 0, HOURS_CAP); if (pctAccept(rr.accept) > 0) { byMonth[mo].accSum += pctAccept(rr.accept); byMonth[mo].accCnt += 1; } });
           const months = Object.keys(byMonth).sort().reverse();
           if (months.length === 0) return null;
           return (
