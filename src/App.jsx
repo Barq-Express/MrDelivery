@@ -1259,9 +1259,16 @@ function OrdersTab({ company, db, save }) {
 
 function TransfersTab({ company, db, save, user }) {
   const [viewAudit, setViewAudit] = useState(null);
+  const [page, setPage] = useState(1);
+  const [qT, setQT] = useState("");
+  const PER = 25;
   const [viewReceipt, setViewReceipt] = useState(null);
   const rIds = new Set(db.riders.filter((r) => r.company === company).map((r) => r.id));
-  const list = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
+  const rInfo = (id) => db.riders.find((r) => r.id === id) || {};
+  const listAll = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
+  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); return !qT || (rr.name || "").includes(qT) || (rr.phone || "").includes(qT) || (rr.companyId || "").includes(qT); });
+  const totalPages = Math.max(1, Math.ceil(list.length / PER));
+  const pageList = list.slice((page - 1) * PER, page * PER);
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
   const riderPhone = (id) => db.riders.find((r) => r.id === id)?.phone || "—";
   const riderCompanyId = (id) => db.riders.find((r) => r.id === id)?.companyId || "—";
@@ -1284,11 +1291,11 @@ function TransfersTab({ company, db, save, user }) {
   const dueRows = rdrs.map((r) => {
     const m = riderMoney(db, r.id);
     const trs = db.transfers.filter((t) => t.riderId === r.id);
-    const hasPending = trs.some((t) => t.status === "Pending");
+    const hasPending = trs.some((t) => !t.reconLabel && t.status !== "Rejected"); // أي تحويل لم يُبَت فيه = قيد المراجعة (نفس معيار الجدول الأسفل)
     const lastDecided = trs.filter((t) => t.decidedBy).slice(-1)[0];
     let key, label, color;
-    if (m.owed <= 0.001 && m.transferred > 0) { key = "approved"; label = tr("قبول يدوي"); color = "#0f9d58"; }
-    else if (hasPending) { key = "review"; label = tr("قيد المراجعة"); color = "#d97706"; }
+    if (hasPending) { key = "review"; label = tr("قيد المراجعة"); color = "#d97706"; }
+    else if (m.owed <= 0.001 && m.transferred > 0) { key = "approved"; label = tr("قبول يدوي"); color = "#0f9d58"; }
     else if (lastDecided && lastDecided.status === "Rejected") { key = "rejected"; label = tr("رفض يدوي"); color = "#c0341d"; }
     else { key = "pending"; label = t("لم يحوّل (Pending)", "Not transferred (Pending)"); color = "#d97706"; }
     return { r, m, key, label, color, hasPending };
@@ -1326,6 +1333,7 @@ function TransfersTab({ company, db, save, user }) {
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-slate-800">{t("سجل التحويلات المرفوعة", "Submitted Transfers")} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
+          <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-48" placeholder={t("بحث بالاسم / الرقم / ID", "search name / phone / ID")} value={qT} onChange={(e) => { setQT(e.target.value); setPage(1); }} /></div>
           <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
         <div className="overflow-x-auto">
@@ -1334,7 +1342,7 @@ function TransfersTab({ company, db, save, user }) {
               {[tr("المندوب"), tr("الهاتف"), "ID", tr("المبلغ"), tr("المرجع"), tr("التاريخ"), tr("الإيصال"), tr("التصنيف"), tr("إجراء")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
             </tr></thead>
             <tbody>
-              {list.map((tf) => (
+              {pageList.map((tf) => (
                 <tr key={tf.id} className="border-b border-slate-50">
                   <td className="py-2 px-3 font-semibold text-slate-800">{riderName(tf.riderId)}</td>
                   <td className="px-3 text-slate-500" dir="ltr">{riderPhone(tf.riderId)}</td>
@@ -1356,11 +1364,18 @@ function TransfersTab({ company, db, save, user }) {
                   </td>
                 </tr>
               ))}
+              {pageList.length === 0 && <tr><td colSpan={9} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات")}</td></tr>}
               {list.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات")}</td></tr>}
             </tbody>
           </table>
         </div>
       </Card>
+      {totalPages > 1 && <div className="flex items-center justify-center gap-2 mt-1">
+        <Btn kind="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>{t("السابق", "Prev")}</Btn>
+        <span className="text-sm text-slate-500">{t("صفحة", "Page")} {page} / {totalPages} · {list.length} {t("تحويل", "transfers")}</span>
+        <Btn kind="ghost" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>{t("التالي", "Next")}</Btn>
+      </div>}
+
       <Modal open={!!viewReceipt} onClose={() => setViewReceipt(null)} title={tr("إيصال البنك")}>{viewReceipt && <img src={viewReceipt} alt={tr("إيصال")} className="w-full rounded-lg" />}</Modal>
 
       <Modal open={!!viewAudit} onClose={() => setViewAudit(null)} title={t("سجل التدقيق", "Audit Log")}>
@@ -3561,6 +3576,16 @@ export default function App() {
   const current = keys.includes(route) ? route : keys[0];
   const activeItem = nav.find((n) => n.key === current);
   const logout = () => supabase.auth.signOut();
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshDb = () => {
+    setRefreshing(true);
+    supabase.from("app_state").select("data, updated_at").eq("id", APP_ROW_ID).single().then(({ data }) => {
+      setRefreshing(false);
+      if (!data) return;
+      lastAtRef.current = data.updated_at ? new Date(data.updated_at).getTime() : Date.now();
+      setDb(normalizeDB(data.data));
+    });
+  };
 
   const Page = () => {
     if (!activeItem) return <GlobalDashboard db={db} onOpen={(c) => setRoute("company:" + c)} />;
@@ -3602,7 +3627,7 @@ export default function App() {
       </aside>
       {sidebar && <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setSidebar(false)} />}
       <div className="flex-1 min-w-0 flex flex-col">
-        <Topbar user={user} onLogout={logout} onMenu={() => setSidebar(true)} title={activeItem ? activeItem.label : ""} onSettings={() => { setSpwMsg(""); setShowSettings(true); }} onToggleLang={toggleLang} />
+        <Topbar user={user} onLogout={logout} onMenu={() => setSidebar(true)} title={activeItem ? activeItem.label : ""} onSettings={() => { setSpwMsg(""); setShowSettings(true); }} onToggleLang={toggleLang} onRefresh={refreshDb} />
         <main className="p-4 md:p-6 flex-1">{Page()}</main>
       </div>
       <Modal open={showSettings} onClose={() => setShowSettings(false)} title={tr("إعدادات الحساب")}>
@@ -3619,7 +3644,7 @@ export default function App() {
   );
 }
 
-function Topbar({ user, onLogout, onMenu, title, logo, onSettings, onToggleLang }) {
+function Topbar({ user, onLogout, onMenu, title, logo, onSettings, onToggleLang, onRefresh }) {
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
       <div className="flex items-center gap-3">
@@ -3632,6 +3657,7 @@ function Topbar({ user, onLogout, onMenu, title, logo, onSettings, onToggleLang 
           <div className="text-sm font-semibold text-slate-800">{user.name}</div>
           <div className="text-[11px] text-slate-400">{roleLabel(user.role)}{user.company ? " · " + cLabel(user.company) : ""}</div>
         </div>
+        {onRefresh && <button onClick={onRefresh} title={t("تحديث البيانات", "Refresh")} className="text-slate-500 hover:text-slate-800"><RefreshCw size={18} /></button>}
         {onToggleLang && <button onClick={onToggleLang} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 border border-slate-200 rounded-lg px-2 py-1" title="Language"><Globe size={14} /> {t("EN", "ع")}</button>}
         <span className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><CircleUserRound size={22} /></span>
         {onSettings && <button onClick={onSettings} className="text-slate-400 hover:text-slate-700" title={tr("الإعدادات")}><Settings size={20} /></button>}
