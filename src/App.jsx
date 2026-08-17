@@ -2004,7 +2004,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
   const submit = () => {
     if (!form.amount || !form.reference) return alert(tr("المبلغ والرقم المرجعي مطلوبان"));
     supabase.rpc("rider_submit_transfer", { p_phone: creds.phone, p_password: creds.password, p_amount: Number(form.amount), p_reference: String(form.reference).trim(), p_date: form.date, p_receipt: form.receipt || "" })
-      .then(({ error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
+      .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
   };
   const onReceipt = (e) => { const f = e.target.files[0]; if (f) resizeImage(f).then((r) => setForm((s) => ({ ...s, receipt: r }))); };
   const changePw = () => {
