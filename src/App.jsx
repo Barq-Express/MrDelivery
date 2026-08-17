@@ -1255,6 +1255,8 @@ function TransfersTab({ company, db, save, user }) {
   const rIds = new Set(db.riders.filter((r) => r.company === company).map((r) => r.id));
   const list = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
+  const riderPhone = (id) => db.riders.find((r) => r.id === id)?.phone || "—";
+  const riderCompanyId = (id) => db.riders.find((r) => r.id === id)?.companyId || "—";
   const setStatus = (id, status) => {
     const cur = db.transfers.find((x) => x.id === id);
     const me = (user && (user.name || user.email)) || "";
@@ -1316,17 +1318,19 @@ function TransfersTab({ company, db, save, user }) {
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-slate-800">{t("سجل التحويلات المرفوعة", "Submitted Transfers")} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
-          <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
+          <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
-              {[tr("المندوب"), tr("المبلغ"), tr("المرجع"), tr("التاريخ"), tr("الإيصال"), tr("التصنيف"), tr("إجراء")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
+              {[tr("المندوب"), tr("الهاتف"), "ID", tr("المبلغ"), tr("المرجع"), tr("التاريخ"), tr("الإيصال"), tr("التصنيف"), tr("إجراء")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
             </tr></thead>
             <tbody>
               {list.map((tf) => (
                 <tr key={tf.id} className="border-b border-slate-50">
                   <td className="py-2 px-3 font-semibold text-slate-800">{riderName(tf.riderId)}</td>
+                  <td className="px-3 text-slate-500" dir="ltr">{riderPhone(tf.riderId)}</td>
+                  <td className="px-3 text-slate-500">{riderCompanyId(tf.riderId)}</td>
                   <td className="px-3">{omr(tf.amount)}</td>
                   <td className="px-3" dir="ltr">{tf.reference}</td>
                   <td className="px-3 text-slate-500">{tf.date}</td>
