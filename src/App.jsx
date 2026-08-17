@@ -3438,6 +3438,7 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [rider, setRider] = useState(null);
   const [hrEmp, setHrEmp] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [route, setRouteRaw] = useState(() => { try { return localStorage.getItem("mrd_route") || "dashboard"; } catch (e) { return "dashboard"; } });
   const setRoute = (r) => { try { localStorage.setItem("mrd_route", r); } catch (e) {} setRouteRaw(r); };
   const [sidebar, setSidebar] = useState(false);
@@ -3576,7 +3577,6 @@ export default function App() {
   const current = keys.includes(route) ? route : keys[0];
   const activeItem = nav.find((n) => n.key === current);
   const logout = () => supabase.auth.signOut();
-  const [refreshing, setRefreshing] = useState(false);
   const refreshDb = () => {
     setRefreshing(true);
     supabase.from("app_state").select("data, updated_at").eq("id", APP_ROW_ID).single().then(({ data }) => {
