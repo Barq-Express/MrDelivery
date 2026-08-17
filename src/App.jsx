@@ -66,6 +66,13 @@ const BANKS = [
   { name: "Standard Chartered Bank", swift: "SCBLOMRX" },
   { name: "Qatar National Bank", swift: "QNBAOMRX" },
 ];
+const allBanks = (db) => {
+  const custom = (db && db.customBanks) || [];
+  const map = new Map();
+  BANKS.forEach((b) => map.set(b.name, b));
+  custom.forEach((b) => { if (b && b.name) map.set(b.name, { name: b.name, swift: b.swift || "" }); });
+  return Array.from(map.values());
+};
 const CMETA = {
   Talabat: { ar: "الطلبات", en: "Talabat", color: "#FF5A00" },
   Snoonu: { ar: "سنونو", en: "Snoonu", color: "#7B1FA2" },
@@ -424,6 +431,7 @@ function normalizeDB(db) {
     regStaff: db.regStaff && db.regStaff.length ? db.regStaff : ["أميرة", "منال", "أسامة", "محمد"],
     areas: db.areas || [],
     excuses: db.excuses || {},
+    customBanks: db.customBanks || [],
     hr: db.hr || { leaveTypes: HR_LEAVE_DEFAULTS, employees: [], leaveRequests: [], payrollRuns: [] },
   };
 }
@@ -1088,7 +1096,7 @@ function Riders({ db, save, company, user }) {
             <Field label={t("ID المندوب في الشركة", "Company Rider ID")}><input className={inputCls} dir="ltr" value={editing.companyId || ""} onChange={(e) => setEditing({ ...editing, companyId: e.target.value })} placeholder={t("مُعرّف المندوب من الشركة", "rider id from company")} /></Field>
             <Field label={tr("المنطقة / المحافظة")}><select className={inputCls} value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value })}><option value="">{t("— اختر المنطقة —", "— select area —")}</option>{(db.areas || []).map((a) => <option key={a} value={a}>{a}</option>)}{editing.area && !(db.areas || []).includes(editing.area) && <option value={editing.area}>{editing.area}</option>}</select></Field>
             <Field label={t("الكوميشن للطلب (فريلانسر)", "Commission per order (Freelancer)")}><input className={inputCls} dir="ltr" type="number" step="0.001" value={editing.commission || ""} onChange={(e) => setEditing({ ...editing, commission: e.target.value })} placeholder={t("مثال 1.400", "e.g. 1.400")} /></Field>
-            <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={editing.bankName || ""} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setEditing({ ...editing, bankName: e.target.value, swift: b ? b.swift : "" }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
+            <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={editing.bankName || ""} onChange={(e) => { const b = allBanks(db).find((x) => x.name === e.target.value); setEditing({ ...editing, bankName: e.target.value, swift: b ? b.swift : "" }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{allBanks(db).map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
             <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} dir="ltr" value={editing.bank} onChange={(e) => setEditing({ ...editing, bank: e.target.value })} /></Field>
             <Field label={t("سويفت كود", "SWIFT Code")}><input className={inputCls} dir="ltr" value={editing.swift || ""} onChange={(e) => setEditing({ ...editing, swift: e.target.value })} placeholder={t("يُعبّأ تلقائياً من البنك", "auto-filled from bank")} /></Field>
             <Field label={tr("الشركة")}><select className={inputCls} value={editing.company} disabled={!!company} onChange={(e) => setEditing({ ...editing, company: e.target.value })}>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select></Field>
@@ -2034,7 +2042,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           ? <p className="text-xs mb-4" style={{ color: "#0f9d58" }}>{t("بياناتك البنكية مؤكّدة ومقفلة. لتعديلها، تواصل مع الإدارة لفتح الإذن.", "Your bank details are confirmed and locked. To edit, contact admin to unlock.")}</p>
           : <p className="text-xs text-slate-500 mb-4">{t("عبّئ بياناتك البنكية بنفسك لضمان صحة التحويلات. بعد التأكيد ستُقفل. أنت مسؤول عن صحتها.", "Fill your own bank details to ensure correct transfers. They lock after confirmation. You are responsible for their accuracy.")}</p>}
         <div className="grid md:grid-cols-2 gap-3">
-          <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} disabled={!!rider.bankLocked} value={bankForm.bankName} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setBankForm({ ...bankForm, bankName: e.target.value, swift: b ? b.swift : bankForm.swift }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
+          <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} disabled={!!rider.bankLocked} value={bankForm.bankName} onChange={(e) => { const b = allBanks(db).find((x) => x.name === e.target.value); setBankForm({ ...bankForm, bankName: e.target.value, swift: b ? b.swift : bankForm.swift }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{allBanks(db).map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
           <Field label={t("اسم صاحب الحساب", "Account Holder Name")}><input className={inputCls} disabled={!!rider.bankLocked} value={bankForm.holder} onChange={(e) => setBankForm({ ...bankForm, holder: e.target.value })} /></Field>
           <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} disabled={!!rider.bankLocked} dir="ltr" value={bankForm.bank} onChange={(e) => setBankForm({ ...bankForm, bank: e.target.value })} /></Field>
           <Field label={t("سويفت كود", "SWIFT Code")}><input className={inputCls} disabled={!!rider.bankLocked} dir="ltr" value={bankForm.swift} onChange={(e) => setBankForm({ ...bankForm, swift: e.target.value })} placeholder={t("يُعبّأ تلقائياً من البنك", "auto-filled from bank")} /></Field>
@@ -3123,7 +3131,7 @@ function HRWindow({ db, save }) {
           <Field label="الراتب الأساسي"><input type="number" className={inputCls} dir="ltr" value={form.basic || ""} onChange={(e) => setForm({ ...form, basic: e.target.value })} /></Field>
           <Field label="البدلات"><input type="number" className={inputCls} dir="ltr" value={form.allowances || ""} onChange={(e) => setForm({ ...form, allowances: e.target.value })} /></Field>
           <div className="md:col-span-2 border-t border-slate-100 pt-2 text-xs font-semibold text-slate-500">بيانات البنك</div>
-          <Field label="اسم البنك"><select className={inputCls} value={form.bankName || ""} onChange={(e) => { const b = BANKS.find((x) => x.name === e.target.value); setForm({ ...form, bankName: e.target.value, swift: b ? b.swift : form.swift }); }}><option value="">— اختر —</option>{BANKS.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
+          <Field label="اسم البنك"><select className={inputCls} value={form.bankName || ""} onChange={(e) => { const b = allBanks(db).find((x) => x.name === e.target.value); setForm({ ...form, bankName: e.target.value, swift: b ? b.swift : form.swift }); }}><option value="">— اختر —</option>{allBanks(db).map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
           <Field label="اسم صاحب الحساب"><input className={inputCls} value={form.holder || ""} onChange={(e) => setForm({ ...form, holder: e.target.value })} /></Field>
           <Field label="رقم الحساب"><input className={inputCls} dir="ltr" value={form.acct || ""} onChange={(e) => setForm({ ...form, acct: e.target.value })} /></Field>
           <Field label="الآيبان"><input className={inputCls} dir="ltr" value={form.iban || ""} onChange={(e) => setForm({ ...form, iban: e.target.value })} /></Field>
@@ -3166,6 +3174,41 @@ function HRWindow({ db, save }) {
         </div>
         <div className="flex justify-end gap-2 mt-4"><Btn kind="ghost" onClick={() => { setModal(null); setForm({}); }}>إلغاء</Btn><Btn onClick={saveType}>حفظ</Btn></div>
       </Modal>
+    </div>
+  );
+}
+
+function BanksWindow({ db, save }) {
+  const [name, setName] = useState("");
+  const [swift, setSwift] = useState("");
+  const custom = db.customBanks || [];
+  const add = () => {
+    if (!name.trim()) return alert(t("اكتب اسم البنك", "Enter bank name"));
+    if (allBanks(db).some((b) => b.name.trim().toLowerCase() === name.trim().toLowerCase())) return alert(t("هذا البنك موجود بالفعل", "This bank already exists"));
+    save({ ...db, customBanks: [...custom, { name: name.trim(), swift: swift.trim() }] });
+    setName(""); setSwift("");
+  };
+  const del = (nm) => { if (window.confirm(t("حذف هذا البنك؟", "Delete this bank?"))) save({ ...db, customBanks: custom.filter((b) => b.name !== nm) }); };
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: BRAND.navy }}><Banknote size={18} color="#fff" /></span><h2 className="font-extrabold text-lg text-slate-800">{t("البنوك", "Banks")}</h2></div>
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3 text-sm">{t("إضافة بنك جديد", "Add New Bank")}</h3>
+        <div className="grid md:grid-cols-3 gap-3 items-end">
+          <Field label={t("اسم البنك", "Bank name")}><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} /></Field>
+          <Field label={t("سويفت كود", "SWIFT code")}><input className={inputCls} dir="ltr" value={swift} onChange={(e) => setSwift(e.target.value)} /></Field>
+          <Btn onClick={add}><Plus size={16} /> {t("إضافة", "Add")}</Btn>
+        </div>
+      </Card>
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3 text-sm">{t("البنوك المضافة", "Added Banks")} ({custom.length})</h3>
+        {custom.length === 0 ? <p className="text-sm text-slate-400">{t("لم تُضف بنوك مخصصة بعد. القائمة الأساسية (27 بنك) متوفرة دائماً.", "No custom banks yet. The base list (27 banks) is always available.")}</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("اسم البنك", "Bank"), t("سويفت", "SWIFT"), ""].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>{custom.map((b) => <tr key={b.name} className="border-b border-slate-50"><td className="py-2 px-3 font-semibold">{b.name}</td><td className="px-3" dir="ltr">{b.swift || "—"}</td><td className="px-3"><button onClick={() => del(b.name)} className="text-red-500">✕</button></td></tr>)}</tbody>
+          </table></div>
+        )}
+      </Card>
+      <p className="text-[11px] text-slate-400">{t("البنوك المضافة تظهر في كل قوائم اختيار البنك (المناديب، الموظفين، بوابة المندوب).", "Added banks appear in all bank dropdowns (riders, employees, rider portal).")}</p>
     </div>
   );
 }
@@ -3253,6 +3296,7 @@ function sidebarFor(user, db) {
     if (user.role === "Admin") items.push({ key: "hr", label: t("الموارد البشرية", "HR"), kind: "hr" });
     items.push(regItem);
     items.push({ key: "areas", label: t("المناطق", "Areas"), kind: "areas" });
+    items.push({ key: "banks", label: t("البنوك", "Banks"), kind: "banks" });
     items.push({ key: "archive", label: t("الأرشيف", "Archive"), kind: "archive" });
     items.push({ key: "allriders", label: t("كل المناديب", "All Riders"), kind: "allriders" });
     items.push({ key: "reports", label: t("تقارير عامة", "Reports"), kind: "reports" });
@@ -3261,7 +3305,7 @@ function sidebarFor(user, db) {
   }
   return items;
 }
-const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, areas: MapPin, hr: Users, myhr: CalendarCheck, archive: Trash2 };
+const ICON_FOR = { dashboard: LayoutDashboard, company: Building2, allriders: Users, reports: FileBarChart, shifts: Clock, employees: UserCog, registration: UserPlus, areas: MapPin, banks: Banknote, hr: Users, myhr: CalendarCheck, archive: Trash2 };
 
 const REG_LINK_FOR = { "Snoonu": "snoonu-tDKVbKhZ", "Talabat": "talabat-BhM5lYFt", "Aramex": "aramex-f_i83gxJ" };
 const REG_LINKS = { "snoonu-tDKVbKhZ": "Snoonu", "talabat-BhM5lYFt": "Talabat", "aramex-f_i83gxJ": "Aramex" };
@@ -3529,6 +3573,7 @@ export default function App() {
     if (activeItem.kind === "myhr") return <MyHRView db={db} save={save} user={user} />;
     if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} user={user} />;
     if (activeItem.kind === "areas") return <AreasWindow db={db} save={save} />;
+    if (activeItem.kind === "banks") return <BanksWindow db={db} save={save} />;
     if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
     if (activeItem.kind === "reports") return <ReportsScoped db={db} company={null} />;
     return null;
