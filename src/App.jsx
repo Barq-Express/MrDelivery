@@ -3439,6 +3439,7 @@ export default function App() {
   const [rider, setRider] = useState(null);
   const [hrEmp, setHrEmp] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [restoring, setRestoring] = useState(() => { try { return !!(localStorage.getItem("mrd_rider") || localStorage.getItem("mrd_hremp")); } catch (e) { return false; } });
   const [route, setRouteRaw] = useState(() => { try { return localStorage.getItem("mrd_route") || "dashboard"; } catch (e) { return "dashboard"; } });
   const setRoute = (r) => { try { localStorage.setItem("mrd_route", r); } catch (e) {} setRouteRaw(r); };
   const [sidebar, setSidebar] = useState(false);
@@ -3452,16 +3453,12 @@ export default function App() {
   useEffect(() => {
     let creds = null;
     try { creds = JSON.parse(localStorage.getItem("mrd_rider") || "null"); } catch (e) { creds = null; }
-    if (creds && creds.phone) {
-      supabase.rpc("rider_login", { p_phone: creds.phone, p_password: creds.password }).then(({ data }) => {
-        if (data) setRider({ view: normalizeDB(data), creds });
-      });
-    }
     let hc = null;
     try { hc = JSON.parse(localStorage.getItem("mrd_hremp") || "null"); } catch (x) { hc = null; }
-    if (hc && hc.user) {
-      supabase.rpc("hr_emp_login", { p_user: hc.user, p_password: hc.password }).then(({ data }) => { if (data) setHrEmp({ data, creds: hc }); });
-    }
+    const jobs = [];
+    if (creds && creds.phone) jobs.push(supabase.rpc("rider_login", { p_phone: creds.phone, p_password: creds.password }).then(({ data }) => { if (data) setRider({ view: normalizeDB(data), creds }); else { try { localStorage.removeItem("mrd_rider"); } catch (e) {} } }));
+    if (hc && hc.user) jobs.push(supabase.rpc("hr_emp_login", { p_user: hc.user, p_password: hc.password }).then(({ data }) => { if (data) setHrEmp({ data, creds: hc }); else { try { localStorage.removeItem("mrd_hremp"); } catch (e) {} } }));
+    if (jobs.length) Promise.all(jobs).finally(() => setRestoring(false)); else setRestoring(false);
   }, []);
 
   useEffect(() => {
@@ -3498,7 +3495,7 @@ export default function App() {
       .on("postgres_changes", { event: "*", schema: "public", table: "app_state" }, (payload) => {
         if (payload.new && payload.new.data) {
           const t = payload.new.updated_at ? new Date(payload.new.updated_at).getTime() : Date.now();
-          if (t < lastAtRef.current) return;
+          if (t <= lastAtRef.current) return;
           lastAtRef.current = t;
           const norm = normalizeDB(payload.new.data);
           setDb(norm);
@@ -3568,6 +3565,14 @@ export default function App() {
     return <RegistrationForm onToggleLang={toggleLang} lockedCompany={lockedCompany} />;
   }
   if (session === undefined) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
+  if (restoring && !rider && !hrEmp && !session) return (
+    <div dir={dirOf()} className="min-h-screen bg-slate-50 flex items-center justify-center" style={{ fontFamily: "'Tajawal', sans-serif" }}>
+      <div className="text-center">
+        <img src={LOGO_FULL} alt="Mr. Delivery" className="h-10 mx-auto mb-4 animate-pulse" />
+        <div className="text-sm text-slate-400">{t("جارٍ تحميل حسابك...", "Loading your account...")}</div>
+      </div>
+    </div>
+  );
   if (!session) return <Login onToggleLang={toggleLang} onRider={(view, creds) => { try { localStorage.setItem("mrd_rider", JSON.stringify(creds)); } catch (e) {} setRider({ view: normalizeDB(view), creds }); }} onHrEmp={(data, creds) => { try { localStorage.setItem("mrd_hremp", JSON.stringify(creds)); } catch (e) {} setHrEmp({ data, creds }); }} />;
   if (!staff || !db) return <div className="min-h-screen flex items-center justify-center text-slate-400">{tr("جارٍ التحميل…")}</div>;
 
