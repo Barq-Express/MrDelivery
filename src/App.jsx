@@ -412,7 +412,7 @@ const SEED_RIDERS = [
   { id: uid(), name: "عبدالله الكندي", phone: "94003002", area: "مسقط", company: "Aramex", type: "Full Time", joinDate: "2025-01-05", status: "Active", bank: "OM77 0002 8899", notes: "", username: "94003002", password: "1234", lastWorked: "2025-05-01" },
 ];
 const emptyBank = () => ({ Talabat: [], Snoonu: [], Aramex: [] });
-const emptyDB = () => ({ version: 3, riders: SEED_RIDERS, imports: [], transfers: [], bankRows: emptyBank(), attendance: {}, employees: [] });
+const emptyDB = () => ({ version: 3, riders: SEED_RIDERS, imports: [], transfers: [], payouts: [], bankRows: emptyBank(), attendance: {}, excuses: {}, employees: [], staff: {}, registrations: [], regStaff: [], areas: [], customBanks: [], hr: { leaveTypes: HR_LEAVE_DEFAULTS, employees: [], leaveRequests: [], payrollRuns: [] } });
 function normalizeDB(db) {
   if (!db) return emptyDB();
   const b = db.bankRows && !Array.isArray(db.bankRows) ? db.bankRows : emptyBank();
