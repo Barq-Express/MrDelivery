@@ -4,7 +4,7 @@ import { supabase } from "./supabase";
 import {
   LayoutDashboard, Users, Truck, Wallet, FileBarChart, LogOut, Plus, Pencil,
   Search, Upload, CheckCircle2, XCircle, AlertTriangle, Banknote, Download,
-  Printer, Eye, Menu, X, CircleUserRound, ShieldCheck, RefreshCw, Bike,
+  Printer, Eye, Menu, X, CircleUserRound, ShieldCheck, RefreshCw, FileText, Bike,
   CalendarCheck, Building2, Clock, Phone, KeyRound, UserCog, MapPin, Settings, Globe, Trash2, UserPlus
 } from "lucide-react";
 
@@ -432,6 +432,7 @@ function normalizeDB(db) {
     areas: db.areas || [],
     excuses: db.excuses || {},
     customBanks: db.customBanks || [],
+    codAdjustments: db.codAdjustments || [],
     hr: db.hr || { leaveTypes: HR_LEAVE_DEFAULTS, employees: [], leaveRequests: [], payrollRuns: [] },
   };
 }
@@ -541,7 +542,8 @@ function riderMoney(db, riderId) {
   const hoursRaw = rows.reduce((a, r) => a + (Number(r.hours) || 0), 0);           // الساعات الأصلية من الشيت
   const hoursCapped = rows.reduce((a, r) => a + Math.min(Number(r.hours) || 0, HOURS_CAP), 0); // بحد أقصى 8/يوم
   const hours = hoursCapped;                                                        // المحسوبة للراتب
-  const codToTransfer = rows.reduce((a, r) => a + (r.transferDue || 0), 0);
+  const codAdj = (db.codAdjustments || []).filter((a) => a.riderId === riderId && a.status === "approved").reduce((s, a) => s + (Number(a.delta) || 0), 0);
+  const codToTransfer = rows.reduce((a, r) => a + (r.transferDue || 0), 0) + codAdj;
   const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved").reduce((a, t) => a + t.amount, 0);
   let earn = 0;
   if (rider) {
@@ -1149,7 +1151,8 @@ function OverviewTab({ company, db }) {
   );
 }
 
-function OrdersTab({ company, db, save }) {
+function OrdersTab({ company, db, save, user }) {
+  const isAdmin = user && user.role === "Admin";
   const ims = db.imports.filter((i) => i.company === company);
   const latest = ims[ims.length - 1];
   const onApply = (imp) => {
@@ -1221,7 +1224,7 @@ function OrdersTab({ company, db, save }) {
                 <span className="text-slate-700"><b dir="ltr">{im.date}</b> · {im.fileName || "—"} · <span className="text-slate-400">{im.results.length} {tr("صف")}</span></span>
                 <span className="flex items-center gap-3">
                   <button onClick={() => setEditImp(JSON.parse(JSON.stringify(im)))} className="text-xs font-semibold" style={{ color: BRAND.blue }}><Pencil size={13} className="inline" /> {t("تعديل", "Edit")}</button>
-                  <button onClick={() => deleteImport(im.id)} className="text-xs font-semibold text-red-600">{t("حذف", "Delete")}</button>
+                  {isAdmin && <button onClick={() => deleteImport(im.id)} className="text-xs font-semibold text-red-600">{t("حذف", "Delete")}</button>}
                 </span>
               </div>
             ))}
@@ -1272,6 +1275,29 @@ function TransfersTab({ company, db, save, user }) {
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
   const riderPhone = (id) => db.riders.find((r) => r.id === id)?.phone || "—";
   const riderCompanyId = (id) => db.riders.find((r) => r.id === id)?.companyId || "—";
+  const isAdmin = user && user.role === "Admin";
+  const COD_LIMIT = 0.1; // حد التعديل بدون موافقة الأدمن
+  const [adjFor, setAdjFor] = useState(null);
+  const [adjNew, setAdjNew] = useState("");
+  const [adjReason, setAdjReason] = useState("");
+  const [adjErr, setAdjErr] = useState("");
+  const [histFor, setHistFor] = useState(null);
+  const openAdj = (r, curCod) => { setAdjFor({ rider: r, cur: curCod }); setAdjNew(String((curCod || 0).toFixed(3))); setAdjReason(""); setAdjErr(""); };
+  const submitAdj = () => {
+    const newVal = Number(adjNew);
+    if (isNaN(newVal)) { setAdjErr(t("قيمة غير صحيحة", "Invalid value")); return; }
+    if (!adjReason.trim()) { setAdjErr(t("السبب مطلوب", "Reason required")); return; }
+    const delta = +(newVal - adjFor.cur).toFixed(3);
+    if (delta === 0) { setAdjErr(t("لا يوجد تغيير", "No change")); return; }
+    const me = (user && (user.name || user.email)) || "";
+    const big = Math.abs(delta) > COD_LIMIT + 1e-9;
+    const rec = { id: uid(), riderId: adjFor.rider.id, company, delta, oldVal: adjFor.cur, newVal, reason: adjReason.trim(), by: me, at: new Date().toISOString().slice(0, 16).replace("T", " "), status: (big && !isAdmin) ? "pending" : "approved" };
+    save({ ...db, codAdjustments: [...(db.codAdjustments || []), rec] });
+    setAdjFor(null);
+    if (rec.status === "pending") alert(t("التغيير أكبر من 0.100 ريال — بانتظار موافقة مدير النظام.", "Change exceeds 0.100 OMR — pending admin approval."));
+  };
+  const decideAdj = (id, ok) => save({ ...db, codAdjustments: (db.codAdjustments || []).map((a) => (a.id === id ? { ...a, status: ok ? "approved" : "rejected", decidedBy: (user && (user.name || user.email)) || "", decidedAt: new Date().toISOString().slice(0, 16).replace("T", " ") } : a)) });
+  const pendingAdj = (db.codAdjustments || []).filter((a) => a.company === company && a.status === "pending");
   const setStatus = (id, status) => {
     const cur = db.transfers.find((x) => x.id === id);
     const me = (user && (user.name || user.email)) || "";
@@ -1313,7 +1339,7 @@ function TransfersTab({ company, db, save, user }) {
           </div>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), "ID", t("COD الكلي", "Total COD"), t("المحوّل", "Transferred"), t("المتبقي", "Remaining"), t("الحالة", "Status")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), "ID", t("COD الكلي", "Total COD"), t("المحوّل", "Transferred"), t("المتبقي", "Remaining"), t("الحالة", "Status"), t("تعديل", "Adjust")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
           <tbody>
             {shownDue.map((x) => (
               <tr key={x.r.id} className="border-b border-slate-50 hover:bg-slate-50">
@@ -1323,6 +1349,10 @@ function TransfersTab({ company, db, save, user }) {
                 <td className="px-3 text-slate-500">{omr(x.m.transferred)}</td>
                 <td className="px-3 font-bold" style={{ color: x.m.owed > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(x.m.owed)}</td>
                 <td className="px-3"><Pill color={x.color}>{x.label}</Pill></td>
+                <td className="px-3"><div className="flex gap-1 items-center">
+                  <button onClick={() => openAdj(x.r, x.m.codToTransfer)} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }} title={t("تعديل COD", "Adjust COD")}>± COD</button>
+                  {(db.codAdjustments || []).some((a) => a.riderId === x.r.id) && <button onClick={() => setHistFor(x.r)} className="text-slate-400" title={t("سجل التعديلات", "Adjustments log")}><Clock size={14} /></button>}
+                </div></td>
               </tr>
             ))}
             {shownDue.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-400">{t("لا يوجد مناديب عليهم مبالغ", "No riders with dues")}</td></tr>}
@@ -1376,7 +1406,54 @@ function TransfersTab({ company, db, save, user }) {
         <Btn kind="ghost" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>{t("التالي", "Next")}</Btn>
       </div>}
 
-      <Modal open={!!viewReceipt} onClose={() => setViewReceipt(null)} title={tr("إيصال البنك")}>{viewReceipt && <img src={viewReceipt} alt={tr("إيصال")} className="w-full rounded-lg" />}</Modal>
+      {pendingAdj.length > 0 && (
+        <Card className="p-4" style={{ borderRight: "4px solid #d97706" }}>
+          <h4 className="font-bold text-slate-800 text-sm mb-2">⏳ {t("تعديلات COD بانتظار موافقتك", "COD adjustments pending your approval")} ({pendingAdj.length})</h4>
+          <div className="space-y-2">
+            {pendingAdj.map((a) => (
+              <div key={a.id} className="flex items-center justify-between p-2 rounded-lg bg-amber-50 flex-wrap gap-2">
+                <div className="text-sm">
+                  <b>{riderName(a.riderId)}</b> · {omr(a.oldVal)} ← {omr(a.newVal)} <span style={{ color: a.delta > 0 ? "#0f9d58" : "#c0341d" }}>({a.delta > 0 ? "+" : ""}{omr(a.delta)})</span>
+                  <div className="text-[11px] text-slate-500">{t("السبب:", "Reason:")} {a.reason} · {a.by} · {a.at}</div>
+                </div>
+                {isAdmin ? <div className="flex gap-1">
+                  <button onClick={() => decideAdj(a.id, true)} className="text-xs px-2 py-1 rounded-lg text-white" style={{ background: "#0f9d58" }}>{t("موافقة", "Approve")}</button>
+                  <button onClick={() => decideAdj(a.id, false)} className="text-xs px-2 py-1 rounded-lg text-white" style={{ background: "#c0341d" }}>{t("رفض", "Reject")}</button>
+                </div> : <Pill color="#d97706">{t("بانتظار المدير", "Awaiting admin")}</Pill>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Modal open={!!adjFor} onClose={() => setAdjFor(null)} title={t("تعديل مبلغ COD", "Adjust COD")}>
+        {adjFor && (
+          <div className="space-y-3">
+            <div className="text-sm text-slate-600">{adjFor.rider.name} · {t("الحالي:", "Current:")} <b>{omr(adjFor.cur)}</b></div>
+            <Field label={t("المبلغ الجديد", "New amount")}><input type="number" step="0.001" className={inputCls} dir="ltr" value={adjNew} onChange={(e) => setAdjNew(e.target.value)} /></Field>
+            {adjNew !== "" && !isNaN(Number(adjNew)) && (() => { const d = +(Number(adjNew) - adjFor.cur).toFixed(3); const big = Math.abs(d) > 0.1 + 1e-9; return <div className="text-xs" style={{ color: big ? "#d97706" : "#0f9d58" }}>{t("الفرق:", "Change:")} {d > 0 ? "+" : ""}{omr(d)} {big ? "⚠️ " + t("يتطلب موافقة المدير", "needs admin approval") : "✓ " + t("ضمن الحد المسموح", "within allowed limit")}</div>; })()}
+            <Field label={t("السبب (إجباري)", "Reason (required)")}><textarea className={inputCls} rows={2} value={adjReason} onChange={(e) => setAdjReason(e.target.value)} placeholder={t("مثال: خطأ في الشيت / مبلغ ناقص", "e.g. sheet error / short amount")} /></Field>
+            {adjErr && <p className="text-xs text-red-600">{adjErr}</p>}
+            <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setAdjFor(null)}>{tr("إلغاء")}</Btn><Btn onClick={submitAdj}>{t("حفظ التعديل", "Save")}</Btn></div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!histFor} onClose={() => setHistFor(null)} title={t("سجل تعديلات COD", "COD Adjustments Log")}>
+        {histFor && (
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">{histFor.name}</p>
+            {(db.codAdjustments || []).filter((a) => a.riderId === histFor.id).slice().reverse().map((a) => (
+              <div key={a.id} className="p-2 rounded-lg bg-slate-50 text-sm">
+                <div>{omr(a.oldVal)} ← {omr(a.newVal)} <span style={{ color: a.delta > 0 ? "#0f9d58" : "#c0341d" }}>({a.delta > 0 ? "+" : ""}{omr(a.delta)})</span> {a.status === "approved" ? <Pill color="#0f9d58">{t("معتمد", "Approved")}</Pill> : a.status === "pending" ? <Pill color="#d97706">{t("معلّق", "Pending")}</Pill> : <Pill color="#c0341d">{t("مرفوض", "Rejected")}</Pill>}</div>
+                <div className="text-[11px] text-slate-500">{t("السبب:", "Reason:")} {a.reason} · {a.by} · {a.at}{a.decidedBy ? " · " + t("قرار:", "by:") + " " + a.decidedBy : ""}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!viewReceipt} onClose={() => setViewReceipt(null)} title={tr("إيصال البنك")}>{viewReceipt && (/\.pdf($|\?)/i.test(viewReceipt) ? <a href={viewReceipt} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold" style={{ color: BRAND.blue }}><FileText size={18} /> {t("فتح ملف PDF", "Open PDF")}</a> : <img src={viewReceipt} alt={tr("إيصال")} className="w-full rounded-lg" />)}</Modal>
 
       <Modal open={!!viewAudit} onClose={() => setViewAudit(null)} title={t("سجل التدقيق", "Audit Log")}>
         {viewAudit && (
@@ -1878,7 +1955,7 @@ function CompanyWindow({ company, db, save, user }) {
       <div>
         {tab === "overview" && <OverviewTab company={company} db={db} />}
         {tab === "riders" && <Riders db={db} save={save} company={company} user={user} />}
-        {tab === "orders" && <OrdersTab company={company} db={db} save={save} />}
+        {tab === "orders" && <OrdersTab company={company} db={db} save={save} user={user} />}
         {tab === "transfers" && <TransfersTab company={company} db={db} save={save} user={user} />}
         {tab === "dues" && <DuesTab company={company} db={db} save={save} user={user} />}
         {tab === "recon" && <ReconTab company={company} db={db} save={save} />}
@@ -2006,7 +2083,35 @@ function RiderPortal({ db, riderId, creds, refresh }) {
     supabase.rpc("rider_submit_transfer", { p_phone: creds.phone, p_password: creds.password, p_amount: Number(form.amount), p_reference: String(form.reference).trim(), p_date: form.date, p_receipt: form.receipt || "" })
       .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
   };
-  const onReceipt = (e) => { const f = e.target.files[0]; if (f) resizeImage(f).then((r) => setForm((s) => ({ ...s, receipt: r }))); };
+  const [upLoading, setUpLoading] = useState(false);
+  const [upErr, setUpErr] = useState("");
+  const dataURLtoBlob = (dataURL) => { const [head, b64] = dataURL.split(","); const mime = (head.match(/:(.*?);/) || [])[1] || "image/jpeg"; const bin = atob(b64); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); return new Blob([arr], { type: mime }); };
+  const uploadToStorage = async (blob, ext, contentType) => {
+    const path = "r" + String(creds.phone || "x").replace(/\D/g, "") + "-" + Date.now() + "." + ext;
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) { // إعادة المحاولة 3 مرات عند فشل الشبكة
+      const { error } = await supabase.storage.from("receipts").upload(path, blob, { contentType, upsert: true });
+      if (!error) { const { data } = supabase.storage.from("receipts").getPublicUrl(path); return (data && data.publicUrl) || ""; }
+      lastErr = error; await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+    }
+    throw lastErr || new Error("upload failed");
+  };
+  const onReceipt = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    setUpErr("");
+    const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+    const isImg = f.type.startsWith("image/");
+    if (!isPdf && !isImg) { setUpErr(t("الملف يجب أن يكون صورة أو PDF", "File must be an image or PDF")); return; }
+    if (f.size > 15 * 1024 * 1024) { setUpErr(t("حجم الملف كبير جداً (الحد 15 ميجابايت)", "File too large (max 15MB)")); return; }
+    setUpLoading(true);
+    const doUpload = async (blob, ext, ct) => {
+      try { const url = await uploadToStorage(blob, ext, ct); setForm((s) => ({ ...s, receipt: url })); }
+      catch (err) { setUpErr(t("تعذّر رفع الملف، تحقّق من الإنترنت وحاول مرة أخرى", "Upload failed, check your connection and retry")); }
+      finally { setUpLoading(false); }
+    };
+    if (isPdf) { doUpload(f, "pdf", "application/pdf"); }
+    else { resizeImage(f).then((dataURL) => doUpload(dataURLtoBlob(dataURL), "jpg", "image/jpeg")); }
+  };
   const changePw = () => {
     if (!pwf.cur) return setPwMsg(tr("أدخل كلمة المرور الحالية"));
     if (pwf.nw.length < 4) return setPwMsg(tr("كلمة المرور الجديدة قصيرة (4 خانات على الأقل)"));
@@ -2046,10 +2151,14 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           <Field label={tr("قيمة المبلغ المحوّل (OMR)")}><input className={inputCls} type="number" step="0.001" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
           <Field label={tr("الرقم المرجعي")}><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
           <Field label={tr("تاريخ التحويل")}><input className={inputCls} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <Field label={tr("صورة الإيصال")}><input className={inputCls} type="file" accept="image/*" onChange={onReceipt} /></Field>
+          <Field label={t("إيصال التحويل (صورة أو PDF)", "Transfer receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={onReceipt} /></Field>
         </div>
-        {form.receipt && <img src={form.receipt} alt={tr("إيصال")} className="mt-3 h-28 rounded-lg border border-slate-200" />}
-        <div className="mt-4"><Btn onClick={submit}>{tr("إرسال التحويل")}</Btn></div>
+        {upLoading && <p className="text-xs text-slate-500 mt-2">{t("جارٍ رفع الملف...", "Uploading file...")}</p>}
+        {upErr && <p className="text-xs text-red-600 mt-2">{upErr}</p>}
+        {form.receipt && !upLoading && (/\.pdf($|\?)/i.test(form.receipt)
+          ? <a href={form.receipt} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: BRAND.blue }}><FileText size={16} /> {t("تم رفع ملف PDF — عرض", "PDF uploaded — view")}</a>
+          : <img src={form.receipt} alt={tr("إيصال")} className="mt-3 h-28 rounded-lg border border-slate-200" />)}
+        <div className="mt-4"><Btn onClick={submit} disabled={upLoading}>{upLoading ? t("جارٍ الرفع...", "Uploading...") : tr("إرسال التحويل")}</Btn></div>
       </Card>
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><Banknote size={18} /> {t("بياناتي البنكية", "My Bank Details")}{rider.bankLocked && <Pill color="#0f9d58">🔒 {t("مؤكّدة", "Confirmed")}</Pill>}</h3>
