@@ -1108,7 +1108,7 @@ function Riders({ db, save, company, user }) {
             <Field label={t("تاريخ الانضمام", "Join Date")}><input type="date" className={inputCls} value={editing.joinDate || ""} onChange={(e) => setEditing({ ...editing, joinDate: e.target.value })} /></Field>
             <Field label={t("تاريخ توقيع العقد", "Contract Sign Date")}><input type="date" className={inputCls} value={editing.contractDate || ""} onChange={(e) => setEditing({ ...editing, contractDate: e.target.value })} /></Field>
             {(!editing.id || (user && user.role === "Admin")) && <Field label={editing.id ? tr("كلمة مرور المندوب") : t("كلمة المرور الأولية", "Initial Password")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>}
-            <Field label={t("موظف التحويلات (COD)", "Transfers Agent (COD)")}><select className={inputCls} value={editing.codAgent || ""} onChange={(e) => setEditing({ ...editing, codAgent: e.target.value })}><option value="">{t("— غير محدد —", "— none —")}</option>{Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).map(([em, p]) => <option key={em} value={em}>{(p && p.name) || em}</option>)}</select></Field>
+            <Field label={t("موظف التحويلات (COD)", "Transfers Agent (COD)")}><select className={inputCls} value={editing.codAgent || ""} onChange={(e) => setEditing({ ...editing, codAgent: e.target.value })}><option value="">{t("— غير محدد —", "— none —")}</option>{Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).filter(([, p]) => p && p.codAgentPerm).map(([em, p]) => <option key={em} value={em}>{(p && p.name) || em}</option>)}</select></Field>
             {user && user.role === "Admin" && editing.id && <div className="col-span-2 p-3 rounded-lg" style={{ background: editing.bankLocked ? "#f0fdf4" : "#fef9c3" }}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold">{editing.bankLocked ? t("🔒 البيانات البنكية مؤكّدة ومقفلة", "🔒 Bank details confirmed & locked") : t("🔓 البيانات البنكية مفتوحة للتعديل", "🔓 Bank details open for editing")}</span>
@@ -1303,7 +1303,7 @@ function TransfersTab({ company, db, save, user }) {
   };
   const decideAdj = (id, ok) => save({ ...db, codAdjustments: (db.codAdjustments || []).map((a) => (a.id === id ? { ...a, status: ok ? "approved" : "rejected", decidedBy: (user && (user.name || user.email)) || "", decidedAt: new Date().toISOString().slice(0, 16).replace("T", " ") } : a)) });
   const pendingAdj = (db.codAdjustments || []).filter((a) => a.company === company && a.status === "pending");
-  const staffList = Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).map(([em, p]) => ({ email: em, name: (p && p.name) || em }));
+  const staffList = Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).filter(([, p]) => p && p.codAgentPerm).map(([em, p]) => ({ email: em, name: (p && p.name) || em }));
   const [showAssign, setShowAssign] = useState(false);
   const [assignDraft, setAssignDraft] = useState({});
   const openAssign = () => { const d = {}; db.riders.filter((r) => r.company === company).forEach((r) => { d[r.id] = r.codAgent || ""; }); setAssignDraft(d); setShowAssign(true); };
@@ -2570,6 +2570,10 @@ function Employees({ db, save, user }) {
     const cur = (db.staff || {})[a.email] || { role: a.role, name: a.name, company: a.company };
     save({ ...db, staff: { ...(db.staff || {}), [a.email]: { ...cur, regAgent: !a.regAgent } } });
   };
+  const toggleCodAgent = (a) => {
+    const cur = (db.staff || {})[a.email] || { role: a.role, name: a.name, company: a.company };
+    save({ ...db, staff: { ...(db.staff || {}), [a.email]: { ...cur, codAgentPerm: !a.codAgentPerm } } });
+  };
   const doReset = () => {
     if (!resetPw || resetPw.length < 6) return setResetMsg(t("كلمة مرور 6 خانات على الأقل", "Password must be 6+ characters"));
     setResetBusy(true); setResetMsg("");
@@ -2633,7 +2637,9 @@ function Employees({ db, save, user }) {
               <span dir="ltr" className="font-mono text-xs text-slate-700">{a.email}</span>
               <span className="flex items-center gap-2">
                 <Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}
-                {isAdmin && <button onClick={() => toggleAgent(a)} className="text-xs font-semibold" style={{ color: a.regAgent ? "#c0341d" : "#0f9d58" }} title={t("تفعيل/إلغاء متابعة التسجيل", "Toggle registration follow-up")}>{a.regAgent ? t("إلغاء المتابعة", "Unset agent") : t("تعيين متابع", "Set agent")}</button>}
+                {a.codAgentPerm ? <Pill color={BRAND.blue}>{t("متابع تحويلات", "Transfers agent")}</Pill> : null}
+                {isAdmin && <button onClick={() => toggleAgent(a)} className="text-xs font-semibold" style={{ color: a.regAgent ? "#c0341d" : "#0f9d58" }} title={t("تفعيل/إلغاء متابعة التسجيل", "Toggle registration follow-up")}>{a.regAgent ? t("إلغاء متابعة التسجيل", "Unset reg") : t("متابع تسجيل", "Reg agent")}</button>}
+                {isAdmin && <button onClick={() => toggleCodAgent(a)} className="text-xs font-semibold" style={{ color: a.codAgentPerm ? "#c0341d" : BRAND.blue }} title={t("تفعيل/إلغاء متابعة التحويلات", "Toggle transfers follow-up")}>{a.codAgentPerm ? t("إلغاء متابعة التحويلات", "Unset transfers") : t("متابع تحويلات", "Transfers agent")}</button>}
                 {isAdmin && <button onClick={() => { setResetAcc(a); setResetPw(""); setResetMsg(""); }} className="text-xs font-semibold" style={{ color: BRAND.orange }} title={t("إعادة تعيين كلمة المرور", "Reset password")}><KeyRound size={13} className="inline" /> {t("كلمة المرور", "Password")}</button>}
               </span>
             </div>
