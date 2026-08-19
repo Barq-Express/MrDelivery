@@ -1220,17 +1220,40 @@ function OrdersTab({ company, db, save, user }) {
       {ims.length > 0 && (
         <Card className="p-5">
           <h3 className="font-bold text-slate-800 mb-3">{t("سجلّ الملفات المرفوعة", "Uploaded Sheets History")}</h3>
-          <div className="space-y-1 text-sm">
-            {ims.slice().reverse().map((im) => (
-              <div key={im.id} className="flex items-center justify-between border-b border-slate-50 py-2 flex-wrap gap-2">
-                <span className="text-slate-700"><b dir="ltr">{im.date}</b> · {im.fileName || "—"} · <span className="text-slate-400">{im.results.length} {tr("صف")}</span></span>
-                <span className="flex items-center gap-3">
-                  <button onClick={() => setEditImp(JSON.parse(JSON.stringify(im)))} className="text-xs font-semibold" style={{ color: BRAND.blue }}><Pencil size={13} className="inline" /> {t("تعديل", "Edit")}</button>
-                  {isAdmin && <button onClick={() => deleteImport(im.id)} className="text-xs font-semibold text-red-600">{t("حذف", "Delete")}</button>}
-                </span>
+          {(() => {
+            const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+            const byMonth = {};
+            ims.forEach((im) => { const mo = (im.date || "").slice(0, 7); (byMonth[mo] = byMonth[mo] || []).push(im); });
+            const months = Object.keys(byMonth).sort().reverse();
+            const moLabel = (mo) => { const [y, m] = mo.split("-"); const idx = parseInt(m, 10) - 1; return (MONTHS_AR[idx] || mo) + " " + y; };
+            return (
+              <div className="space-y-4">
+                {months.map((mo) => {
+                  const sheets = byMonth[mo].slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+                  const totalOrders = sheets.reduce((s, im) => s + im.results.reduce((x, r) => x + (r.orders || 0), 0), 0);
+                  return (
+                    <div key={mo}>
+                      <div className="flex items-center justify-between mb-1 pb-1 border-b-2" style={{ borderColor: BRAND.orange }}>
+                        <span className="font-bold text-slate-800">{moLabel(mo)}</span>
+                        <span className="text-xs text-slate-400">{sheets.length} {t("ملف", "sheets")} · {totalOrders} {t("طلب", "orders")}</span>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        {sheets.map((im) => (
+                          <div key={im.id} className="flex items-center justify-between border-b border-slate-50 py-2 flex-wrap gap-2">
+                            <span className="text-slate-700"><b dir="ltr">{im.date}</b> · {im.fileName || "—"} · <span className="text-slate-400">{im.results.length} {tr("صف")}</span></span>
+                            <span className="flex items-center gap-3">
+                              <button onClick={() => setEditImp(JSON.parse(JSON.stringify(im)))} className="text-xs font-semibold" style={{ color: BRAND.blue }}><Pencil size={13} className="inline" /> {t("تعديل", "Edit")}</button>
+                              {isAdmin && <button onClick={() => deleteImport(im.id)} className="text-xs font-semibold text-red-600">{t("حذف", "Delete")}</button>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </Card>
       )}
 
@@ -1269,10 +1292,12 @@ function TransfersTab({ company, db, save, user }) {
   const PER = 25;
   const [viewReceipt, setViewReceipt] = useState(null);
   const myEmail = (user && user.email) || "";
-  const canSeeAll = user && user.role === "Admin";
-  const visibleRiders = db.riders.filter((r) => r.company === company && (canSeeAll || (r.codAgent && r.codAgent.toLowerCase() === myEmail.toLowerCase())));
+  const isAdminU = user && user.role === "Admin";
+  const visibleRiders = db.riders.filter((r) => r.company === company); // الجميع يشوف كل المناديب
   const rIds = new Set(visibleRiders.map((r) => r.id));
   const rInfo = (id) => db.riders.find((r) => r.id === id) || {};
+  const canControl = (riderId) => { const r = db.riders.find((x) => x.id === riderId); return isAdminU || (r && r.codAgent && r.codAgent.toLowerCase() === myEmail.toLowerCase()); }; // فقط المسؤول (أو الأدمن) يتحكم
+  const agentName = (riderId) => { const r = db.riders.find((x) => x.id === riderId); if (!r || !r.codAgent) return "—"; const s = { ...STAFF_BY_EMAIL, ...(db.staff || {}) }[r.codAgent]; return (s && s.name) || r.codAgent; };
   const listAll = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
   const list = listAll.filter((t) => { const rr = rInfo(t.riderId); return !qT || (rr.name || "").includes(qT) || (rr.phone || "").includes(qT) || (rr.companyId || "").includes(qT); });
   const totalPages = Math.max(1, Math.ceil(list.length / PER));
@@ -1349,25 +1374,26 @@ function TransfersTab({ company, db, save, user }) {
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 className="font-bold text-slate-800">{t("مستحقات COD على المناديب", "Rider COD Dues")} — {cLabel(company)}</h3>
           <div className="flex gap-2 flex-wrap">
-            {canSeeAll && <Btn kind="ghost" size="sm" onClick={openAssign}><Users size={14} /> {t("توزيع المناديب على الموظفين", "Distribute riders")}</Btn>}
+            {isAdmin && <Btn kind="ghost" size="sm" onClick={openAssign}><Users size={14} /> {t("توزيع المناديب على الموظفين", "Distribute riders")}</Btn>}
             <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-44" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
             <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All")}</option><option value="pending">{t("لم يحوّل", "Not transferred")}</option><option value="review">{tr("قيد المراجعة")}</option><option value="approved">{tr("قبول يدوي")}</option><option value="rejected">{tr("رفض يدوي")}</option></select>
             <Btn kind="ghost" size="sm" onClick={() => exportExcel(shownDue.map((x) => ({ المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": x.m.codToTransfer, المحوّل: x.m.transferred, المتبقي: x.m.owed, الحالة: x.label })), "COD_Dues_" + company)}><Download size={14} /> Excel ({shownDue.length})</Btn>
           </div>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), "ID", t("COD الكلي", "Total COD"), t("المحوّل", "Transferred"), t("المتبقي", "Remaining"), t("الحالة", "Status"), t("تعديل", "Adjust")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), "ID", t("الموظف المسؤول", "Agent"), t("COD الكلي", "Total COD"), t("المحوّل", "Transferred"), t("المتبقي", "Remaining"), t("الحالة", "Status"), t("تعديل", "Adjust")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
           <tbody>
             {shownDue.map((x) => (
               <tr key={x.r.id} className="border-b border-slate-50 hover:bg-slate-50">
                 <td className="py-2.5 px-3 font-semibold text-slate-800">{x.r.name}<div className="text-[11px] text-slate-400" dir="ltr">{x.r.phone}</div></td>
                 <td className="px-3 text-slate-500">{x.r.companyId || "—"}</td>
+                <td className="px-3 text-slate-500">{agentName(x.r.id)}</td>
                 <td className="px-3">{omr(x.m.codToTransfer)}</td>
                 <td className="px-3 text-slate-500">{omr(x.m.transferred)}</td>
                 <td className="px-3 font-bold" style={{ color: x.m.owed > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(x.m.owed)}</td>
                 <td className="px-3"><Pill color={x.color}>{x.label}</Pill></td>
                 <td className="px-3"><div className="flex gap-1 items-center">
-                  <button onClick={() => openAdj(x.r, x.m.codToTransfer)} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }} title={t("تعديل COD", "Adjust COD")}>± COD</button>
+                  {canControl(x.r.id) && <button onClick={() => openAdj(x.r, x.m.codToTransfer)} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }} title={t("تعديل COD", "Adjust COD")}>± COD</button>}
                   {(db.codAdjustments || []).some((a) => a.riderId === x.r.id) && <button onClick={() => setHistFor(x.r)} className="text-slate-400" title={t("سجل التعديلات", "Adjustments log")}><Clock size={14} /></button>}
                 </div></td>
               </tr>
@@ -1404,8 +1430,10 @@ function TransfersTab({ company, db, save, user }) {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1 items-center">
-                      <button onClick={() => setStatus(tf.id, "Approved")} title={tr("قبول")} className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
-                      <button onClick={() => setStatus(tf.id, "Rejected")} title={tr("رفض")} className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
+                      {canControl(tf.riderId) ? <>
+                        <button onClick={() => setStatus(tf.id, "Approved")} title={tr("قبول")} className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
+                        <button onClick={() => setStatus(tf.id, "Rejected")} title={tr("رفض")} className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
+                      </> : <span className="text-[10px] text-slate-400">{agentName(tf.riderId)}</span>}
                       {tf.auditLog && tf.auditLog.length > 0 && <button onClick={() => setViewAudit(tf)} title={t("سجل التدقيق", "Audit log")} className="text-slate-400 hover:text-slate-700"><Clock size={15} /></button>}
                     </div>
                   </td>
@@ -2234,7 +2262,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
                     <td className="py-2 px-3" dir="ltr">{h.date}</td>
                     <td className="px-3">{h.orders}</td>
                     <td className="px-3">{omr(h.cod)}</td>
-                    {isFT && <td className="px-3" style={{ color: hRed ? "#c0341d" : "inherit", fontWeight: hRed ? 700 : 400 }}>{capped}{over ? <span className="text-[10px] text-slate-400"> ({h.hours})</span> : ""}{hRed ? " 🔴" : ""}</td>}
+                    {isFT && <td className="px-3" style={{ color: hRed ? "#c0341d" : "inherit", fontWeight: hRed ? 700 : 400 }}>{capped}{hRed ? " 🔴" : ""}</td>}
                     {isFT && <td className="px-3" style={{ color: aRed ? "#c0341d" : "inherit", fontWeight: aRed ? 700 : 400 }}>{h.accept ? h.accept + "%" : "—"}{aRed ? " 🔴" : ""}</td>}
                   </tr>
                 ); })}
