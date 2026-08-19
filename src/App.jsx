@@ -1296,7 +1296,7 @@ function OrdersTab({ company, db, save, user }) {
   );
 }
 
-function TransfersTab({ company, db, save, user }) {
+function TransfersTab({ company, db, save, user, onRefresh }) {
   const [viewAudit, setViewAudit] = useState(null);
   const [page, setPage] = useState(1);
   const [qT, setQT] = useState("");
@@ -1357,9 +1357,14 @@ function TransfersTab({ company, db, save, user }) {
     if (cur && cur.decidedBy && cur.decidedBy !== me && !isAdmin) {
       return alert(t("هذا القرار اتخذه: " + cur.decidedBy + "\nلا يمكن تغييره إلا بواسطته أو بواسطة مدير النظام.", "Decided by: " + cur.decidedBy + "\nOnly they or the System Admin can change it."));
     }
+    const label = status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي");
     const at = new Date().toISOString().slice(0, 16).replace("T", " ");
-    const entry = { action: status === "Approved" ? "قبول يدوي" : "رفض يدوي", by: me, at, override: !!(cur && cur.decidedBy && cur.decidedBy !== me && isAdmin) };
-    save({ ...db, transfers: db.transfers.map((tf) => (tf.id === id ? { ...tf, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي"), decidedBy: me, decidedAt: at, auditLog: [...(tf.auditLog || []), entry] } : tf)) });
+    // تحديث فوري محلياً (شكل سريع) ثم حفظ موجّه عبر RPC
+    save({ ...db, transfers: db.transfers.map((tf) => (tf.id === id ? { ...tf, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: label, decidedBy: me, decidedAt: at, auditLog: [...(tf.auditLog || []), { action: label, by: me, at }] } : tf)) });
+    supabase.rpc("admin_decide_transfer", { p_id: id, p_status: status, p_by: me, p_label: label }).then(({ error }) => {
+      if (error) { alert(tr("تعذّر حفظ القرار، حاول مرة أخرى")); return; }
+      if (onRefresh) setTimeout(onRefresh, 400); // اجلب أحدث نسخة للتأكيد
+    });
   };
   const pending = list.filter((t) => t.status === "Pending").length;
   const [q, setQ] = useState("");
@@ -2007,7 +2012,7 @@ function DuesTab({ company, db, save, user }) {
   );
 }
 
-function CompanyWindow({ company, db, save, user }) {
+function CompanyWindow({ company, db, save, user, onRefresh }) {
   const tabKey = "mrd_ctab_" + company;
   const [tab, setTabRaw] = useState(() => { try { return localStorage.getItem(tabKey) || "overview"; } catch (e) { return "overview"; } });
   const setTab = (v) => { try { localStorage.setItem(tabKey, v); } catch (e) {} setTabRaw(v); };
@@ -2033,7 +2038,7 @@ function CompanyWindow({ company, db, save, user }) {
         {tab === "overview" && <OverviewTab company={company} db={db} />}
         {tab === "riders" && <Riders db={db} save={save} company={company} user={user} />}
         {tab === "orders" && <OrdersTab company={company} db={db} save={save} user={user} />}
-        {tab === "transfers" && <TransfersTab company={company} db={db} save={save} user={user} />}
+        {tab === "transfers" && <TransfersTab company={company} db={db} save={save} user={user} onRefresh={onRefresh} />}
         {tab === "dues" && <DuesTab company={company} db={db} save={save} user={user} />}
         {tab === "recon" && <ReconTab company={company} db={db} save={save} />}
         {tab === "attendance" && <AttendanceTab company={company} db={db} save={save} />}
@@ -3788,7 +3793,7 @@ export default function App() {
   const Page = () => {
     if (!activeItem) return <GlobalDashboard db={db} onOpen={(c) => setRoute("company:" + c)} />;
     if (activeItem.kind === "dashboard") return <GlobalDashboard db={db} onOpen={(c) => setRoute("company:" + c)} />;
-    if (activeItem.kind === "company") return <CompanyWindow company={activeItem.company} db={db} save={save} user={user} />;
+    if (activeItem.kind === "company") return <CompanyWindow company={activeItem.company} db={db} save={save} user={user} onRefresh={refreshDb} />;
     if (activeItem.kind === "allriders") return <Riders db={db} save={save} company={null} user={user} />;
     if (activeItem.kind === "shifts") return <ShiftsWindow db={db} save={save} />;
     if (activeItem.kind === "employees") return <Employees db={db} save={save} user={user} />;
