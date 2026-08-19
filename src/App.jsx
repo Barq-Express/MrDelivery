@@ -545,6 +545,7 @@ function riderMoney(db, riderId) {
   const codAdj = (db.codAdjustments || []).filter((a) => a.riderId === riderId && a.status === "approved").reduce((s, a) => s + (Number(a.delta) || 0), 0);
   const codToTransfer = rows.reduce((a, r) => a + (r.transferDue || 0), 0) + codAdj;
   const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved").reduce((a, t) => a + t.amount, 0);
+  const deducted = db.transfers.filter((t) => t.riderId === riderId && t.status !== "Rejected").reduce((a, t) => a + t.amount, 0); // المُرسل (قيد المراجعة + المعتمد) — يُخصم فوراً
   let earn = 0;
   if (rider) {
     if (rider.type === "Freelancer") {
@@ -557,7 +558,7 @@ function riderMoney(db, riderId) {
   }
   const hoursPay = rider && rider.type === "Full Time" ? earn : hoursCapped * HOUR_RATE;
   const paidDues = (db.payouts || []).filter((p) => p.riderId === riderId).reduce((a, p) => a + (Number(p.amount) || 0), 0);
-  return { orders, hours, hoursRaw, hoursCapped, hoursPay, codToTransfer, transferred, owed: codToTransfer - transferred, earn, paidDues, duesRemaining: earn - paidDues };
+  return { orders, hours, hoursRaw, hoursCapped, hoursPay, codToTransfer, transferred, deducted, owed: codToTransfer - deducted, pendingAmt: deducted - transferred, earn, paidDues, duesRemaining: earn - paidDues };
 }
 
 /* ============================================================
@@ -967,7 +968,7 @@ function Riders({ db, save, company, user }) {
   const scoped = db.riders.filter((r) => (!company || r.company === company));
   const allAreas = Array.from(new Set(db.riders.map((r) => r.area).filter(Boolean))).sort();
   const areas = Array.from(new Set(scoped.map((r) => r.area).filter(Boolean))).sort();
-  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "", status: "Active", bank: "", bankName: "", swift: "", notes: "", username: "", password: "1234" };
+  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "", status: "Active", bank: "", bankName: "", swift: "", notes: "", username: "", password: "1234", codAgent: "" };
   const list = scoped.filter((r) =>
     (company || cf === "all" || r.company === cf) &&
     (af === "all" || (r.area || "") === af) &&
@@ -1107,6 +1108,7 @@ function Riders({ db, save, company, user }) {
             <Field label={t("تاريخ الانضمام", "Join Date")}><input type="date" className={inputCls} value={editing.joinDate || ""} onChange={(e) => setEditing({ ...editing, joinDate: e.target.value })} /></Field>
             <Field label={t("تاريخ توقيع العقد", "Contract Sign Date")}><input type="date" className={inputCls} value={editing.contractDate || ""} onChange={(e) => setEditing({ ...editing, contractDate: e.target.value })} /></Field>
             {(!editing.id || (user && user.role === "Admin")) && <Field label={editing.id ? tr("كلمة مرور المندوب") : t("كلمة المرور الأولية", "Initial Password")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>}
+            <Field label={t("موظف التحويلات (COD)", "Transfers Agent (COD)")}><select className={inputCls} value={editing.codAgent || ""} onChange={(e) => setEditing({ ...editing, codAgent: e.target.value })}><option value="">{t("— غير محدد —", "— none —")}</option>{Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).map(([em, p]) => <option key={em} value={em}>{(p && p.name) || em}</option>)}</select></Field>
             {user && user.role === "Admin" && editing.id && <div className="col-span-2 p-3 rounded-lg" style={{ background: editing.bankLocked ? "#f0fdf4" : "#fef9c3" }}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold">{editing.bankLocked ? t("🔒 البيانات البنكية مؤكّدة ومقفلة", "🔒 Bank details confirmed & locked") : t("🔓 البيانات البنكية مفتوحة للتعديل", "🔓 Bank details open for editing")}</span>
@@ -1266,7 +1268,10 @@ function TransfersTab({ company, db, save, user }) {
   const [qT, setQT] = useState("");
   const PER = 25;
   const [viewReceipt, setViewReceipt] = useState(null);
-  const rIds = new Set(db.riders.filter((r) => r.company === company).map((r) => r.id));
+  const myEmail = (user && user.email) || "";
+  const canSeeAll = user && user.role === "Admin";
+  const visibleRiders = db.riders.filter((r) => r.company === company && (canSeeAll || (r.codAgent && r.codAgent.toLowerCase() === myEmail.toLowerCase())));
+  const rIds = new Set(visibleRiders.map((r) => r.id));
   const rInfo = (id) => db.riders.find((r) => r.id === id) || {};
   const listAll = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
   const list = listAll.filter((t) => { const rr = rInfo(t.riderId); return !qT || (rr.name || "").includes(qT) || (rr.phone || "").includes(qT) || (rr.companyId || "").includes(qT); });
@@ -1313,7 +1318,7 @@ function TransfersTab({ company, db, save, user }) {
   const [q, setQ] = useState("");
   const [statusF, setStatusF] = useState("all");
   // نظرة عامة لكل مندوب: كم عليه COD وهل حوّل
-  const rdrs = db.riders.filter((r) => r.company === company && r.status === "Active");
+  const rdrs = visibleRiders.filter((r) => r.status === "Active");
   const dueRows = rdrs.map((r) => {
     const m = riderMoney(db, r.id);
     const trs = db.transfers.filter((t) => t.riderId === r.id);
