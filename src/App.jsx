@@ -535,6 +535,16 @@ function exportExcel(rows, name) {
 /* ============================================================
    Money summary per rider
    ============================================================ */
+function authorizedCodAgents(db) {
+  return Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).filter(([, p]) => p && p.codAgentPerm).map(([em]) => em);
+}
+// يعطي أقل موظف تحميلاً كل مرة (توزيع متوازن للمناديب الجدد فقط)
+function makeAgentPicker(db, company) {
+  const agents = authorizedCodAgents(db);
+  const counts = {}; agents.forEach((a) => (counts[a] = 0));
+  db.riders.filter((r) => r.company === company && counts[r.codAgent] !== undefined).forEach((r) => counts[r.codAgent]++);
+  return () => { if (!agents.length) return ""; const a = agents.reduce((b, x) => (counts[x] < counts[b] ? x : b), agents[0]); counts[a]++; return a; };
+}
 function riderMoney(db, riderId) {
   const rider = db.riders.find((r) => r.id === riderId);
   const rows = db.imports.flatMap((i) => i.results).filter((r) => r.riderId === riderId);
@@ -1003,6 +1013,7 @@ function Riders({ db, save, company, user }) {
     const dup = dupRider(r.phone, r.civil, r.id);
     if (dup) return alert(t("مندوب مسجّل سابقاً بنفس الهاتف أو الرقم المدني (" + dup.name + " — في " + dup.where + "). لا يمكن التكرار.", "Already registered with same phone or civil ID (" + dup.name + " — in " + dup.where + "). Duplicate not allowed."));
     if (!r.username) r.username = r.phone;
+    if (!r.id && !r.codAgent) { const pick = makeAgentPicker(db, r.company || company); r.codAgent = pick(); }
     const riders = r.id ? db.riders.map((x) => (x.id === r.id ? r : x)) : [...db.riders, { ...r, id: uid(), lastWorked: null }];
     save({ ...db, riders }); setEditing(null);
   };
@@ -1017,7 +1028,7 @@ function Riders({ db, save, company, user }) {
       if (p) seen.add(p); if (c) seen.add("c:" + c);
       clean.push(n);
     });
-    if (clean.length) save({ ...db, riders: [...db.riders, ...clean] });
+    if (clean.length) { const pick = makeAgentPicker(db, company); const withAgent = clean.map((n) => ({ ...n, codAgent: n.codAgent || pick() })); save({ ...db, riders: [...db.riders, ...withAgent] }); }
     setBulk(false);
     if (skipped.length) alert(t("تم تخطّي " + skipped.length + " مندوب مكرّر (مسجّلين سابقاً): ", "Skipped " + skipped.length + " duplicate(s) already registered: ") + skipped.join("، "));
   };
@@ -1185,7 +1196,7 @@ function OrdersTab({ company, db, save, user }) {
   return (
     <div className="space-y-5">
       <Card className="p-4 text-sm text-slate-600">{note}</Card>
-      <ExcelImporter company={company} riders={db.riders} onApply={onApply} onAddRider={(nr) => { const p = String(nr.phone || "").replace(/\D/g, ""); const c = String(nr.companyId || "").trim(); const exists = db.riders.some((x) => (p && String(x.phone).replace(/\D/g, "") === p) || (c && (x.companyId || "") === c)); if (exists) { alert(t("هذا المندوب مسجّل بالفعل", "This rider already exists")); return; } save({ ...db, riders: [...db.riders, { ...nr, id: uid(), lastWorked: null }] }); }} />
+      <ExcelImporter company={company} riders={db.riders} onApply={onApply} onAddRider={(nr) => { const p = String(nr.phone || "").replace(/\D/g, ""); const c = String(nr.companyId || "").trim(); const exists = db.riders.some((x) => (p && String(x.phone).replace(/\D/g, "") === p) || (c && (x.companyId || "") === c)); if (exists) { alert(t("هذا المندوب مسجّل بالفعل", "This rider already exists")); return; } const pick = makeAgentPicker(db, company); save({ ...db, riders: [...db.riders, { ...nr, id: uid(), lastWorked: null, codAgent: nr.codAgent || pick() }] }); }} />
       {latest && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
@@ -2843,7 +2854,8 @@ function RegistrationModule({ db, save, user }) {
       status: "Active", bank: r.bank || "", bankName: r.bankName || "", swift: r.swift || "", nationality: r.nationality || "", vehicleType: r.vehicleType || "",
       notes: r.notes || "", username: r.username || r.phone, password: r.password || "1234", lastWorked: null,
     };
-    save({ ...db, riders: [...db.riders, rider], registrations: regs.map((x) => (x.id === r.id ? { ...x, converted: true, convertedAt: todayStr() } : x)) });
+    const pickRA = makeAgentPicker(db, rider.company); const riderA = { ...rider, codAgent: rider.codAgent || pickRA() };
+    save({ ...db, riders: [...db.riders, riderA], registrations: regs.map((x) => (x.id === r.id ? { ...x, converted: true, convertedAt: todayStr() } : x)) });
     setSel(null);
   };
 
