@@ -1303,6 +1303,17 @@ function TransfersTab({ company, db, save, user }) {
   };
   const decideAdj = (id, ok) => save({ ...db, codAdjustments: (db.codAdjustments || []).map((a) => (a.id === id ? { ...a, status: ok ? "approved" : "rejected", decidedBy: (user && (user.name || user.email)) || "", decidedAt: new Date().toISOString().slice(0, 16).replace("T", " ") } : a)) });
   const pendingAdj = (db.codAdjustments || []).filter((a) => a.company === company && a.status === "pending");
+  const staffList = Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).map(([em, p]) => ({ email: em, name: (p && p.name) || em }));
+  const [showAssign, setShowAssign] = useState(false);
+  const [assignDraft, setAssignDraft] = useState({});
+  const openAssign = () => { const d = {}; db.riders.filter((r) => r.company === company).forEach((r) => { d[r.id] = r.codAgent || ""; }); setAssignDraft(d); setShowAssign(true); };
+  const autoDistribute = () => {
+    if (staffList.length === 0) return;
+    const d = { ...assignDraft }; let i = 0;
+    db.riders.filter((r) => r.company === company).forEach((r) => { d[r.id] = staffList[i % staffList.length].email; i++; });
+    setAssignDraft(d);
+  };
+  const saveAssign = () => { save({ ...db, riders: db.riders.map((r) => (r.company === company && assignDraft[r.id] !== undefined ? { ...r, codAgent: assignDraft[r.id] } : r)) }); setShowAssign(false); };
   const setStatus = (id, status) => {
     const cur = db.transfers.find((x) => x.id === id);
     const me = (user && (user.name || user.email)) || "";
@@ -1338,6 +1349,7 @@ function TransfersTab({ company, db, save, user }) {
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 className="font-bold text-slate-800">{t("مستحقات COD على المناديب", "Rider COD Dues")} — {cLabel(company)}</h3>
           <div className="flex gap-2 flex-wrap">
+            {canSeeAll && <Btn kind="ghost" size="sm" onClick={openAssign}><Users size={14} /> {t("توزيع المناديب على الموظفين", "Distribute riders")}</Btn>}
             <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-44" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
             <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All")}</option><option value="pending">{t("لم يحوّل", "Not transferred")}</option><option value="review">{tr("قيد المراجعة")}</option><option value="approved">{tr("قبول يدوي")}</option><option value="rejected">{tr("رفض يدوي")}</option></select>
             <Btn kind="ghost" size="sm" onClick={() => exportExcel(shownDue.map((x) => ({ المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": x.m.codToTransfer, المحوّل: x.m.transferred, المتبقي: x.m.owed, الحالة: x.label })), "COD_Dues_" + company)}><Download size={14} /> Excel ({shownDue.length})</Btn>
@@ -1456,6 +1468,27 @@ function TransfersTab({ company, db, save, user }) {
             ))}
           </div>
         )}
+      </Modal>
+
+      <Modal open={showAssign} onClose={() => setShowAssign(false)} title={t("توزيع المناديب على الموظفين", "Distribute Riders to Staff")}>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs text-slate-500">{t("عيّن لكل مندوب الموظف المسؤول عن تحويلاته، أو وزّعهم بالتساوي.", "Assign each rider's transfers agent, or distribute evenly.")}</p>
+            <Btn kind="ghost" size="sm" onClick={autoDistribute}>{t("توزيع بالتساوي", "Distribute evenly")}</Btn>
+          </div>
+          <div className="max-h-80 overflow-y-auto space-y-1">
+            {db.riders.filter((r) => r.company === company).map((r) => (
+              <div key={r.id} className="flex items-center justify-between gap-2 py-1 border-b border-slate-50">
+                <span className="text-sm font-semibold text-slate-700">{r.name}<span className="text-[11px] text-slate-400 mr-1" dir="ltr"> {r.phone}</span></span>
+                <select className="rounded-lg border border-slate-300 px-2 py-1 text-sm" value={assignDraft[r.id] || ""} onChange={(e) => setAssignDraft({ ...assignDraft, [r.id]: e.target.value })}>
+                  <option value="">{t("— غير محدد —", "— none —")}</option>
+                  {staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setShowAssign(false)}>{tr("إلغاء")}</Btn><Btn onClick={saveAssign}>{t("حفظ التوزيع", "Save")}</Btn></div>
+        </div>
       </Modal>
 
       <Modal open={!!viewReceipt} onClose={() => setViewReceipt(null)} title={tr("إيصال البنك")}>{viewReceipt && (/\.pdf($|\?)/i.test(viewReceipt) ? <a href={viewReceipt} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold" style={{ color: BRAND.blue }}><FileText size={18} /> {t("فتح ملف PDF", "Open PDF")}</a> : <img src={viewReceipt} alt={tr("إيصال")} className="w-full rounded-lg" />)}</Modal>
