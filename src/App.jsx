@@ -2218,7 +2218,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard icon={<FileBarChart size={16} />} label={tr("الطلبات")} value={m.orders} accent={BRAND.blue} />
         <StatCard icon={<Banknote size={16} />} label={tr("COD للتحويل")} value={omr(m.owed)} accent="#c0341d" />
-        <StatCard icon={<Wallet size={16} />} label={rider.type === "Full Time" ? tr("مستحق الساعات") : tr("المستحق لك")} value={omr(m.earn)} accent="#0f9d58" />
+        <StatCard icon={<Wallet size={16} />} label={rider.type === "Full Time" ? tr("راتبي المتبقّي") : tr("مستحقّي المتبقّي")} value={omr(m.duesRemaining)} accent={m.duesRemaining > 0.001 ? "#0f9d58" : "#94a3b8"} sub={m.paidDues > 0 ? t("مدفوع: ", "Paid: ") + omr(m.paidDues) + " / " + omr(m.earn) : t("الإجمالي: ", "Total: ") + omr(m.earn)} />
         <StatCard icon={<CheckCircle2 size={16} />} label={tr("المحوّل")} value={omr(m.transferred)} accent={BRAND.navy} />
         {rider.type === "Full Time" && <StatCard icon={<Clock size={16} />} label={tr("ساعات الدوام")} value={m.hours} accent="#7c3aed" />}
       </div>
