@@ -1369,6 +1369,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const pending = list.filter((t) => t.status === "Pending").length;
   const [q, setQ] = useState("");
   const [statusF, setStatusF] = useState("all");
+  const [agentF, setAgentF] = useState("all");
   // نظرة عامة لكل مندوب: كم عليه COD وهل حوّل
   const rdrs = visibleRiders.filter((r) => r.status === "Active");
   const dueRows = rdrs.map((r) => {
@@ -1383,7 +1384,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     else { key = "pending"; label = t("لم يحوّل (Pending)", "Not transferred (Pending)"); color = "#d97706"; }
     return { r, m, key, label, color, hasPending };
   }).filter((x) => x.m.codToTransfer > 0.001);
-  const shownDue = dueRows.filter((x) => (statusF === "all" || x.key === statusF) && (x.r.name.includes(q) || (x.r.phone || "").includes(q) || (x.r.companyId || "").includes(q)));
+  const shownDue = dueRows.filter((x) => (statusF === "all" || x.key === statusF) && (agentF === "all" || (agentF === "none" ? !x.r.codAgent : (x.r.codAgent || "").toLowerCase() === agentF.toLowerCase())) && (x.r.name.includes(q) || (x.r.phone || "").includes(q) || (x.r.companyId || "").includes(q)));
   return (
     <div className="space-y-4">
       <Card className="p-5">
@@ -1393,6 +1394,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             {isAdmin && <Btn kind="ghost" size="sm" onClick={openAssign}><Users size={14} /> {t("توزيع المناديب على الموظفين", "Distribute riders")}</Btn>}
             <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-44" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
             <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All")}</option><option value="pending">{t("لم يحوّل", "Not transferred")}</option><option value="review">{tr("قيد المراجعة")}</option><option value="approved">{tr("قبول يدوي")}</option><option value="rejected">{tr("رفض يدوي")}</option></select>
+            <select value={agentF} onChange={(e) => setAgentF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
             <Btn kind="ghost" size="sm" onClick={() => exportExcel(shownDue.map((x) => ({ المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": x.m.codToTransfer, المحوّل: x.m.transferred, المتبقي: x.m.owed, الحالة: x.label })), "COD_Dues_" + company)}><Download size={14} /> Excel ({shownDue.length})</Btn>
           </div>
         </div>
@@ -1439,7 +1441,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
                   <td className="px-3">{omr(tf.amount)}</td>
                   <td className="px-3" dir="ltr">{tf.reference}</td>
                   <td className="px-3 text-slate-500">{tf.date}</td>
-                  <td className="px-3">{tf.receipt ? <button onClick={() => setViewReceipt(tf.receipt)} className="text-slate-500 hover:text-slate-800"><Eye size={16} /></button> : "—"}</td>
+                  <td className="px-3">{tf.receipt ? <button onClick={() => setViewReceipt(tf)} className="text-slate-500 hover:text-slate-800"><Eye size={16} /></button> : "—"}</td>
                   <td className="px-3">
                     {tf.reconLabel ? <Pill color={tf.status === "Approved" ? "#0f9d58" : tf.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(tf.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}
                     {tf.decidedBy && <div className="text-[10px] text-slate-400 mt-1">{t("بواسطة", "by")}: {tf.decidedBy}</div>}
@@ -1535,7 +1537,29 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
         </div>
       </Modal>
 
-      <Modal open={!!viewReceipt} onClose={() => setViewReceipt(null)} title={tr("إيصال البنك")}>{viewReceipt && (/\.pdf($|\?)/i.test(viewReceipt) ? <a href={viewReceipt} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold" style={{ color: BRAND.blue }}><FileText size={18} /> {t("فتح ملف PDF", "Open PDF")}</a> : <img src={viewReceipt} alt={tr("إيصال")} className="w-full rounded-lg" />)}</Modal>
+      {viewReceipt && (() => { const rc = typeof viewReceipt === "string" ? viewReceipt : viewReceipt.receipt; const isPdf = /\.pdf($|\?)/i.test(rc || ""); return (
+        <>
+          <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.35)" }} onClick={() => setViewReceipt(null)} />
+          <div className="fixed top-0 bottom-0 left-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col" dir={dirOf()} style={{ animation: "none" }}>
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">{t("إيصال التحويل", "Transfer Receipt")}</h3>
+              <button onClick={() => setViewReceipt(null)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
+            </div>
+            {typeof viewReceipt !== "string" && (
+              <div className="p-4 border-b border-slate-100 bg-slate-50 space-y-1.5 text-sm">
+                <div className="flex justify-between"><span className="text-slate-500">{tr("المندوب")}</span><span className="font-semibold">{riderName(viewReceipt.riderId)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">{t("الرقم المرجعي", "Reference")}</span><span className="font-bold text-lg" dir="ltr" style={{ color: BRAND.blue }}>{viewReceipt.reference}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">{tr("المبلغ")}</span><span className="font-bold" dir="ltr">{omr(viewReceipt.amount)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">{tr("التاريخ")}</span><span dir="ltr">{viewReceipt.date}</span></div>
+              </div>
+            )}
+            <div className="flex-1 overflow-auto p-4">
+              {isPdf ? <a href={rc} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold" style={{ color: BRAND.blue }}><FileText size={18} /> {t("فتح ملف PDF في نافذة جديدة", "Open PDF in new tab")}</a>
+                     : <img src={rc} alt={tr("إيصال")} className="w-full rounded-lg border border-slate-200" />}
+            </div>
+          </div>
+        </>
+      ); })()}
 
       <Modal open={!!viewAudit} onClose={() => setViewAudit(null)} title={t("سجل التدقيق", "Audit Log")}>
         {viewAudit && (
