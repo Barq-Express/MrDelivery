@@ -1300,6 +1300,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const [viewAudit, setViewAudit] = useState(null);
   const [page, setPage] = useState(1);
   const [qT, setQT] = useState("");
+  const [agentFT, setAgentFT] = useState("all");
   const PER = 25;
   const [viewReceipt, setViewReceipt] = useState(null);
   const myEmail = (user && user.email) || "";
@@ -1310,7 +1311,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const canControl = (riderId) => { const r = db.riders.find((x) => x.id === riderId); return isAdminU || (r && r.codAgent && r.codAgent.toLowerCase() === myEmail.toLowerCase()); }; // فقط المسؤول (أو الأدمن) يتحكم
   const agentName = (riderId) => { const r = db.riders.find((x) => x.id === riderId); if (!r || !r.codAgent) return "—"; const s = { ...STAFF_BY_EMAIL, ...(db.staff || {}) }[r.codAgent]; return (s && s.name) || r.codAgent; };
   const listAll = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
-  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); return !qq || (rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || (rr.companyId || "").toLowerCase().includes(qq) || (t.reference || "").toLowerCase().includes(qq); });
+  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : (rr.codAgent || "").toLowerCase() === agentFT.toLowerCase()); return agOk && (!qq || (rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || (rr.companyId || "").toLowerCase().includes(qq) || (t.reference || "").toLowerCase().includes(qq)); });
   const totalPages = Math.max(1, Math.ceil(list.length / PER));
   const pageList = list.slice((page - 1) * PER, page * PER);
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
@@ -1424,7 +1425,10 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-slate-800">{t("سجل التحويلات المرفوعة", "Submitted Transfers")} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
-          <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={t("بحث: اسم / هاتف / ID / رقم مرجعي", "name / phone / ID / reference")} value={qT} onChange={(e) => { setQT(e.target.value); setPage(1); }} /></div>
+          <div className="flex gap-2 flex-wrap">
+            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={t("بحث: اسم / هاتف / ID / رقم مرجعي", "name / phone / ID / reference")} value={qT} onChange={(e) => { setQT(e.target.value); setPage(1); }} /></div>
+            <select value={agentFT} onChange={(e) => { setAgentFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
+          </div>
           <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
         <div className="overflow-x-auto">
