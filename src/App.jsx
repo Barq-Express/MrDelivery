@@ -1324,6 +1324,8 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const [adjReason, setAdjReason] = useState("");
   const [adjErr, setAdjErr] = useState("");
   const [histFor, setHistFor] = useState(null);
+  const [rejFor, setRejFor] = useState(null);
+  const [rejReason, setRejReason] = useState("");
   const openAdj = (r, curCod) => { setAdjFor({ rider: r, cur: curCod }); setAdjNew(String((curCod || 0).toFixed(3))); setAdjReason(""); setAdjErr(""); };
   const submitAdj = () => {
     const newVal = Number(adjNew);
@@ -1351,21 +1353,32 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     setAssignDraft(d);
   };
   const saveAssign = () => { save({ ...db, riders: db.riders.map((r) => (r.company === company && assignDraft[r.id] !== undefined ? { ...r, codAgent: assignDraft[r.id] } : r)) }); setShowAssign(false); };
-  const setStatus = (id, status) => {
-    const cur = db.transfers.find((x) => x.id === id);
+  const guardDecider = (cur) => {
     const me = (user && (user.name || user.email)) || "";
     const isAdmin = user && user.role === "Admin";
-    if (cur && cur.decidedBy && cur.decidedBy !== me && !isAdmin) {
-      return alert(t("هذا القرار اتخذه: " + cur.decidedBy + "\nلا يمكن تغييره إلا بواسطته أو بواسطة مدير النظام.", "Decided by: " + cur.decidedBy + "\nOnly they or the System Admin can change it."));
-    }
+    if (cur && cur.decidedBy && cur.decidedBy !== me && !isAdmin) { alert(t("هذا القرار اتخذه: " + cur.decidedBy + "\nلا يمكن تغييره إلا بواسطته أو بواسطة مدير النظام.", "Decided by: " + cur.decidedBy + "\nOnly they or the System Admin can change it.")); return false; }
+    return true;
+  };
+  const applyDecision = (id, status, reason) => {
+    const me = (user && (user.name || user.email)) || "";
     const label = status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي");
     const at = new Date().toISOString().slice(0, 16).replace("T", " ");
-    // تحديث فوري محلياً (شكل سريع) ثم حفظ موجّه عبر RPC
-    save({ ...db, transfers: db.transfers.map((tf) => (tf.id === id ? { ...tf, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: label, decidedBy: me, decidedAt: at, auditLog: [...(tf.auditLog || []), { action: label, by: me, at }] } : tf)) });
-    supabase.rpc("admin_decide_transfer", { p_id: id, p_status: status, p_by: me, p_label: label }).then(({ error }) => {
+    save({ ...db, transfers: db.transfers.map((tf) => (tf.id === id ? { ...tf, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: label, rejectReason: status === "Rejected" ? (reason || "") : "", decidedBy: me, decidedAt: at, auditLog: [...(tf.auditLog || []), { action: label, by: me, at, reason: reason || "" }] } : tf)) });
+    supabase.rpc("admin_decide_transfer", { p_id: id, p_status: status, p_by: me, p_label: label, p_reason: reason || "" }).then(({ error }) => {
       if (error) { alert(tr("تعذّر حفظ القرار، حاول مرة أخرى")); return; }
-      if (onRefresh) setTimeout(onRefresh, 400); // اجلب أحدث نسخة للتأكيد
+      if (onRefresh) setTimeout(onRefresh, 400);
     });
+  };
+  const setStatus = (id, status) => {
+    const cur = db.transfers.find((x) => x.id === id);
+    if (!guardDecider(cur)) return;
+    if (status === "Rejected") { setRejFor(id); setRejReason(""); return; } // اطلب السبب أولاً
+    applyDecision(id, status, "");
+  };
+  const submitReject = () => {
+    if (!rejReason.trim()) { alert(t("اكتب سبب الرفض", "Enter rejection reason")); return; }
+    applyDecision(rejFor, "Rejected", rejReason.trim());
+    setRejFor(null); setRejReason("");
   };
   const pending = list.filter((t) => t.status === "Pending").length;
   const [q, setQ] = useState("");
@@ -1538,6 +1551,14 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             ))}
           </div>
           <div className="flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setShowAssign(false)}>{tr("إلغاء")}</Btn><Btn onClick={saveAssign}>{t("حفظ التوزيع", "Save")}</Btn></div>
+        </div>
+      </Modal>
+
+      <Modal open={!!rejFor} onClose={() => setRejFor(null)} title={t("سبب رفض التحويل", "Rejection Reason")}>
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">{t("سيظهر هذا السبب للمندوب في تطبيقه.", "This reason will be shown to the rider in their app.")}</p>
+          <Field label={t("السبب (إجباري)", "Reason (required)")}><textarea className={inputCls} rows={3} value={rejReason} onChange={(e) => setRejReason(e.target.value)} placeholder={t("مثال: المبلغ غير مطابق / الإيصال غير واضح / رقم مرجعي خاطئ", "e.g. amount mismatch / unclear receipt / wrong reference")} /></Field>
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setRejFor(null)}>{tr("إلغاء")}</Btn><Btn kind="danger" onClick={submitReject}>{t("تأكيد الرفض", "Confirm Rejection")}</Btn></div>
         </div>
       </Modal>
 
@@ -2367,7 +2388,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
             {myTransfers.map((t) => (
               <tr key={t.id} className="border-b border-slate-50">
                 <td className="py-2 px-3">{t.date}</td><td className="px-3">{omr(t.amount)}</td><td className="px-3" dir="ltr">{t.reference}</td>
-                <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}</td>
+                <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}{t.status === "Rejected" && t.rejectReason ? <div className="text-[11px] text-red-600 mt-1">{tr("سبب الرفض")}: {t.rejectReason}</div> : null}</td>
               </tr>
             ))}
             {myTransfers.length === 0 && <tr><td colSpan={4} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات")}</td></tr>}
@@ -2950,12 +2971,13 @@ function RegistrationModule({ db, save, user }) {
           </div>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("المندوب", "Driver"), t("الهاتف", "Phone"), t("البطاقة", "ID"), t("الموظف", "Assignee"), t("الحالة", "Status"), t("التقدّم", "Progress"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("المندوب", "Driver"), t("الهاتف", "Phone"), t("المنطقة", "Area"), t("البطاقة", "ID"), t("الموظف", "Assignee"), t("الحالة", "Status"), t("التقدّم", "Progress"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
           <tbody>
             {rows.map((r) => { const st = regStatus(r); return (
               <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
                 <td className="py-3 px-3 font-semibold text-slate-800">{r.fullName}</td>
                 <td className="px-3 text-slate-600" dir="ltr">{r.phone}</td>
+                <td className="px-3 text-slate-600">{(r.wilaya || r.area) ? <span className="inline-flex items-center gap-1"><MapPin size={12} className="text-slate-400" />{r.wilaya || r.area}</span> : "—"}</td>
                 <td className="px-3 text-slate-500" dir="ltr">{r.idNumber || "—"}</td>
                 <td className="px-3 text-slate-600">{agentName(r.assignee)}</td>
                 <td className="px-3"><Pill color={REG_STATUS_COLOR[st]}>{t(REG_STATUS_LABEL[st][0], REG_STATUS_LABEL[st][1])}</Pill></td>
