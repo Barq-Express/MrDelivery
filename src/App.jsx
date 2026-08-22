@@ -445,8 +445,16 @@ const loadDB = () =>
   supabase.from("app_state").select("data").eq("id", APP_ROW_ID).single()
     .then(({ data }) => normalizeDB(data ? data.data : null))
     .catch(() => normalizeDB(null));
-const saveDB = (next, at) =>
-  supabase.from("app_state").update({ data: next, updated_at: at || new Date().toISOString() }).eq("id", APP_ROW_ID);
+const saveDB = async (next, at) => {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) { // إعادة محاولة تلقائية عند فشل الشبكة/التعارض
+    const res = await supabase.from("app_state").update({ data: next, updated_at: at || new Date().toISOString() }).eq("id", APP_ROW_ID);
+    if (!res.error) return res;
+    lastErr = res.error;
+    await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+  }
+  return { error: lastErr };
+};
 
 function resizeImage(file, max = 900) {
   return new Promise((res) => {
@@ -1022,10 +1030,13 @@ function Riders({ db, save, company, user }) {
     const clean = []; const skipped = [];
     news.forEach((n) => {
       const p = normP(n.phone), c = String(n.civil || "").trim();
+      const cid = String(n.companyId || "").trim();
       const key = p + "|" + c;
-      const dup = dupRider(n.phone, n.civil, null) || (p && seen.has(p)) || (c && seen.has("c:" + c));
+      // للرفع الجماعي: امنع التكرار بـ ID التطبيق (companyId) أيضاً — حتى لو اختلف الهاتف/المدني
+      const dupCid = cid && (db.riders.some((x) => String(x.companyId || "").trim() === cid) || seen.has("id:" + cid));
+      const dup = dupRider(n.phone, n.civil, null) || dupCid || (p && seen.has(p)) || (c && seen.has("c:" + c));
       if (dup) { skipped.push(n.name || n.phone); return; }
-      if (p) seen.add(p); if (c) seen.add("c:" + c);
+      if (p) seen.add(p); if (c) seen.add("c:" + c); if (cid) seen.add("id:" + cid);
       clean.push(n);
     });
     if (clean.length) { const pick = makeAgentPicker(db, company); const withAgent = clean.map((n) => ({ ...n, codAgent: n.codAgent || pick() })); save({ ...db, riders: [...db.riders, ...withAgent] }); }
