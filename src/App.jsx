@@ -1020,6 +1020,9 @@ function Riders({ db, save, company, user }) {
     if (!r.name || !r.phone) return alert(tr("الاسم ورقم الهاتف مطلوبان"));
     const dup = dupRider(r.phone, r.civil, r.id);
     if (dup) return alert(t("مندوب مسجّل سابقاً بنفس الهاتف أو الرقم المدني (" + dup.name + " — في " + dup.where + "). لا يمكن التكرار.", "Already registered with same phone or civil ID (" + dup.name + " — in " + dup.where + "). Duplicate not allowed."));
+    // القاعدة ٢: منع تكرار ID التطبيق (companyId) حتى لو اختلف الهاتف/المدني
+    const cid = String(r.companyId || "").trim();
+    if (cid) { const idDup = db.riders.find((x) => x.id !== r.id && String(x.companyId || "").trim() === cid); if (idDup) return alert(t("يوجد مندوب بنفس ID التطبيق (" + idDup.name + "). لا يمكن التكرار.", "A rider with the same app ID already exists (" + idDup.name + "). Duplicate not allowed.")); }
     if (!r.username) r.username = r.phone;
     if (!r.id && !r.codAgent) { const pick = makeAgentPicker(db, r.company || company); r.codAgent = pick(); }
     const riders = r.id ? db.riders.map((x) => (x.id === r.id ? r : x)) : [...db.riders, { ...r, id: uid(), lastWorked: null }];
