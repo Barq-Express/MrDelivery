@@ -3865,25 +3865,37 @@ export default function App() {
     return () => clearInterval(id);
   }, [rider ? rider.creds.phone : null]);
 
+  const patchWithRetry = async (k, val) => {
+    let lastErr = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const res = await supabase.rpc("patch_state", { p_key: k, p_value: val === undefined ? null : val });
+      if (!res.error) return true;
+      lastErr = res.error;
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
+    console.error("patch failed", k, lastErr);
+    return false;
+  };
   const save = (next) => {
     const at = new Date().toISOString();
     lastAtRef.current = new Date(at).getTime();
     const prev = dbRef.current || {};
     dbRef.current = next;
     setDb(next);
-    // احسب المفاتيح المتغيّرة فقط، واكتب كل واحد ذرّياً (يمنع الكتابات المتعارضة من مسح بعضها)
     const changed = [];
     const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
     keys.forEach((k) => { if (JSON.stringify(prev[k]) !== JSON.stringify(next[k])) changed.push(k); });
     if (changed.length === 0) return;
-    // لو تغيّر مفتاح واحد فقط (الغالب) → تحديث موجّه ذرّي
     if (changed.length <= 3) {
-      Promise.all(changed.map((k) => supabase.rpc("patch_state", { p_key: k, p_value: next[k] === undefined ? null : next[k] })))
-        .then((results) => { const err = results.find((r) => r && r.error); if (err) { console.error(err.error); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.")); } })
-        .catch((e) => { console.error(e); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.")); });
+      Promise.all(changed.map((k) => patchWithRetry(k, next[k]))).then((oks) => {
+        if (oks.some((ok) => !ok)) {
+          // فشل الحفظ نهائياً → أرجع الحالة للأصل حتى لا يظن المستخدم أنه حُفظ
+          dbRef.current = prev; setDb(prev);
+          alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة. (لم يتم حفظ أي شيء)"));
+        }
+      });
     } else {
-      // تغييرات كثيرة دفعة وحدة → حفظ كامل (نادر: مثل الاستيراد أو المسح)
-      saveDB(next, at).then(({ error }) => { if (error) { console.error(error); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.")); } });
+      saveDB(next, at).then(({ error }) => { if (error) { console.error(error); dbRef.current = prev; setDb(prev); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة. (لم يتم حفظ أي شيء)")); } });
     }
   };
   const changeStaffPw = () => {
