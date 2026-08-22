@@ -3789,6 +3789,7 @@ export default function App() {
   const setRoute = (r) => { try { localStorage.setItem("mrd_route", r); } catch (e) {} setRouteRaw(r); };
   const [sidebar, setSidebar] = useState(false);
   const lastAtRef = useRef(0);
+  const dbRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
   const [spw, setSpw] = useState({ nw: "", cf: "" });
   const [spwMsg, setSpwMsg] = useState("");
@@ -3834,7 +3835,7 @@ export default function App() {
       if (data) lastAtRef.current = data.updated_at ? new Date(data.updated_at).getTime() : Date.now();
       const prof = resolveProf(norm);
       if (prof && prof.disabled) { alert(t("تم تعطيل هذا الحساب. تواصل مع الإدارة.", "This account is disabled. Contact admin.")); supabase.auth.signOut(); setStaff(null); setDb(null); return; }
-      setDb(norm);
+      dbRef.current = norm; setDb(norm);
       setStaff({ ...prof, email });
     });
     const ch = supabase.channel("app_state_changes")
@@ -3844,7 +3845,7 @@ export default function App() {
           if (t <= lastAtRef.current) return;
           lastAtRef.current = t;
           const norm = normalizeDB(payload.new.data);
-          setDb(norm);
+          dbRef.current = norm; setDb(norm);
           const baseP = (norm && norm.staff && norm.staff[email]) || STAFF_BY_EMAIL[email] || { role: "Operations Manager", name: email, company: null };
           const erP = norm && norm.employees && norm.employees.find((x) => x.email && x.email.trim().toLowerCase() === email.toLowerCase());
           const prof = erP && erP.name ? { ...baseP, name: erP.name } : baseP;
@@ -3867,8 +3868,23 @@ export default function App() {
   const save = (next) => {
     const at = new Date().toISOString();
     lastAtRef.current = new Date(at).getTime();
+    const prev = dbRef.current || {};
+    dbRef.current = next;
     setDb(next);
-    saveDB(next, at).then(({ error }) => { if (error) { console.error(error); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.")); } });
+    // احسب المفاتيح المتغيّرة فقط، واكتب كل واحد ذرّياً (يمنع الكتابات المتعارضة من مسح بعضها)
+    const changed = [];
+    const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+    keys.forEach((k) => { if (JSON.stringify(prev[k]) !== JSON.stringify(next[k])) changed.push(k); });
+    if (changed.length === 0) return;
+    // لو تغيّر مفتاح واحد فقط (الغالب) → تحديث موجّه ذرّي
+    if (changed.length <= 3) {
+      Promise.all(changed.map((k) => supabase.rpc("patch_state", { p_key: k, p_value: next[k] === undefined ? null : next[k] })))
+        .then((results) => { const err = results.find((r) => r && r.error); if (err) { console.error(err.error); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.")); } })
+        .catch((e) => { console.error(e); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.")); });
+    } else {
+      // تغييرات كثيرة دفعة وحدة → حفظ كامل (نادر: مثل الاستيراد أو المسح)
+      saveDB(next, at).then(({ error }) => { if (error) { console.error(error); alert(tr("تعذّر حفظ التغيير — تحقّق من الاتصال وأعد المحاولة.")); } });
+    }
   };
   const changeStaffPw = () => {
     if (spw.nw.length < 6) return setSpwMsg(tr("كلمة المرور يجب أن تكون 6 خانات على الأقل"));
@@ -3934,7 +3950,7 @@ export default function App() {
       setRefreshing(false);
       if (!data) return;
       lastAtRef.current = data.updated_at ? new Date(data.updated_at).getTime() : Date.now();
-      setDb(normalizeDB(data.data));
+      const norm2 = normalizeDB(data.data); dbRef.current = norm2; setDb(norm2);
     });
   };
 
