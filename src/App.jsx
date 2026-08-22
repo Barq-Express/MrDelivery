@@ -1379,10 +1379,14 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     if (moveFrom === moveTo) { alert(t("لا يمكن النقل لنفس الموظف", "Cannot move to the same agent")); return; }
     let n = moveMode === "all" ? fromRiders.length : Math.min(parseInt(moveCount, 10) || 0, fromRiders.length);
     if (n <= 0) { alert(t("لا يوجد مناديب للنقل", "No riders to move")); return; }
-    const moveIds = new Set(fromRiders.slice(0, n).map((r) => r.id));
-    save({ ...db, riders: db.riders.map((r) => (moveIds.has(r.id) ? { ...r, codAgent: moveTo } : r)) });
-    setShowMove(false); setMoveFrom(""); setMoveTo(""); setMoveCount(""); setMoveMode("all");
-    alert(t("تم نقل " + n + " مندوب.", "Moved " + n + " rider(s)."));
+    setShowMove(false);
+    supabase.rpc("move_riders", { p_company: company, p_from: moveFrom, p_to: moveTo, p_limit: moveMode === "all" ? 0 : n }).then(({ data, error }) => {
+      if (error) { alert(tr("تعذّر النقل — حاول مرة أخرى")); return; }
+      const moved = (data && data.moved) || 0;
+      alert(t("تم نقل " + moved + " مندوب.", "Moved " + moved + " rider(s)."));
+      if (onRefresh) onRefresh();
+    });
+    setMoveFrom(""); setMoveTo(""); setMoveCount(""); setMoveMode("all");
   };
   const guardDecider = (cur) => {
     const me = (user && (user.name || user.email)) || "";
@@ -1569,7 +1573,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
         <div className="space-y-3">
           <Field label={t("من موظف", "From agent")}><select className={inputCls} value={moveFrom} onChange={(e) => setMoveFrom(e.target.value)}><option value="">{t("— اختر —", "— select —")}</option>{staffList.map((s) => { const c = db.riders.filter((r) => r.company === company && (r.codAgent || "").toLowerCase() === s.email.toLowerCase()).length; return <option key={s.email} value={s.email}>{s.name} ({c})</option>; })}</select></Field>
           <Field label={t("إلى موظف", "To agent")}><select className={inputCls} value={moveTo} onChange={(e) => setMoveTo(e.target.value)}><option value="">{t("— اختر —", "— select —")}</option>{staffList.filter((s) => s.email !== moveFrom).map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}</select></Field>
-          {moveFrom && <p className="text-xs text-slate-500">{t("عدد مناديب هذا الموظف:", "Riders with this agent:")} <b>{fromRiders.length}</b></p>}
+          {moveFrom && <p className="text-xs text-slate-500">{t("عدد كل مناديب هذا الموظف (بمن فيهم بلا COD):", "All riders assigned to this agent (incl. no COD):")} <b>{fromRiders.length}</b></p>}
           <Field label={t("كم مندوب تنقل؟", "How many?")}>
             <div className="flex gap-2">
               <label className="flex items-center gap-1 text-sm"><input type="radio" checked={moveMode === "all"} onChange={() => setMoveMode("all")} /> {t("الكل", "All")}</label>
@@ -2927,7 +2931,7 @@ function ArchiveWindow({ db, save }) {
   );
 }
 
-function RegistrationModule({ db, save, user }) {
+function RegistrationModule({ db, save, user, onRefresh }) {
   const regs = db.registrations || [];
   // authorized agents = staff accounts flagged regAgent; fallback to legacy regStaff names
   const staffAgents = Object.entries(db.staff || {}).filter(([, p]) => p && p.regAgent).map(([email, p]) => ({ id: email, name: p.name || email }));
@@ -2958,10 +2962,14 @@ function RegistrationModule({ db, save, user }) {
     if (rmFrom === rmTo) { alert(t("لا يمكن النقل لنفس الموظف", "Same agent")); return; }
     let n = rmMode === "all" ? rmFromList.length : Math.min(parseInt(rmCount, 10) || 0, rmFromList.length);
     if (n <= 0) { alert(t("لا يوجد طلبات للنقل", "Nothing to move")); return; }
-    const ids = new Set(rmFromList.slice(0, n).map((r) => r.id));
-    save({ ...db, registrations: regs.map((r) => (ids.has(r.id) ? { ...r, assignee: rmTo } : r)) });
-    setShowRegMove(false); setRmFrom(""); setRmTo(""); setRmCount(""); setRmMode("all");
-    alert(t("تم نقل " + n + " طلب.", "Moved " + n + " request(s)."));
+    setShowRegMove(false);
+    supabase.rpc("move_registrations", { p_from: rmFrom, p_to: rmTo, p_limit: rmMode === "all" ? 0 : n }).then(({ data, error }) => {
+      if (error) { alert(tr("تعذّر النقل — حاول مرة أخرى")); return; }
+      const moved = (data && data.moved) || 0;
+      alert(t("تم نقل " + moved + " طلب.", "Moved " + moved + " request(s)."));
+      if (onRefresh) onRefresh();
+    });
+    setRmFrom(""); setRmTo(""); setRmCount(""); setRmMode("all");
   };
   const delReg = (r) => { if (window.confirm(t("حذف هذا الطلب نهائياً؟", "Delete this request permanently?"))) { save({ ...db, registrations: regs.filter((x) => x.id !== r.id) }); setSel(null); } };
   const [rejectFor, setRejectFor] = useState(null);
@@ -3975,7 +3983,7 @@ export default function App() {
     if (activeItem.kind === "employees") return <Employees db={db} save={save} user={user} />;
     if (activeItem.kind === "hr" && user.role === "Admin") return <HRWindow db={db} save={save} />;
     if (activeItem.kind === "myhr") return <MyHRView db={db} save={save} user={user} />;
-    if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} user={user} />;
+    if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} user={user} onRefresh={refreshDb} />;
     if (activeItem.kind === "areas") return <AreasWindow db={db} save={save} />;
     if (activeItem.kind === "banks") return <BanksWindow db={db} save={save} />;
     if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
