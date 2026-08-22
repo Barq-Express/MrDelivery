@@ -1367,6 +1367,23 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     setAssignDraft(d);
   };
   const saveAssign = () => { save({ ...db, riders: db.riders.map((r) => (r.company === company && assignDraft[r.id] !== undefined ? { ...r, codAgent: assignDraft[r.id] } : r)) }); setShowAssign(false); };
+  // نقل مناديب من موظف إلى موظف آخر
+  const [showMove, setShowMove] = useState(false);
+  const [moveFrom, setMoveFrom] = useState("");
+  const [moveTo, setMoveTo] = useState("");
+  const [moveMode, setMoveMode] = useState("all"); // all | count
+  const [moveCount, setMoveCount] = useState("");
+  const fromRiders = moveFrom ? db.riders.filter((r) => r.company === company && (r.codAgent || "").toLowerCase() === moveFrom.toLowerCase()) : [];
+  const doMove = () => {
+    if (!moveFrom || !moveTo) { alert(t("اختر الموظف المنقول منه وإليه", "Choose from and to agents")); return; }
+    if (moveFrom === moveTo) { alert(t("لا يمكن النقل لنفس الموظف", "Cannot move to the same agent")); return; }
+    let n = moveMode === "all" ? fromRiders.length : Math.min(parseInt(moveCount, 10) || 0, fromRiders.length);
+    if (n <= 0) { alert(t("لا يوجد مناديب للنقل", "No riders to move")); return; }
+    const moveIds = new Set(fromRiders.slice(0, n).map((r) => r.id));
+    save({ ...db, riders: db.riders.map((r) => (moveIds.has(r.id) ? { ...r, codAgent: moveTo } : r)) });
+    setShowMove(false); setMoveFrom(""); setMoveTo(""); setMoveCount(""); setMoveMode("all");
+    alert(t("تم نقل " + n + " مندوب.", "Moved " + n + " rider(s)."));
+  };
   const guardDecider = (cur) => {
     const me = (user && (user.name || user.email)) || "";
     const isAdmin = user && user.role === "Admin";
@@ -1420,6 +1437,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
           <h3 className="font-bold text-slate-800">{t("مستحقات COD على المناديب", "Rider COD Dues")} — {cLabel(company)}</h3>
           <div className="flex gap-2 flex-wrap">
             {isAdmin && <Btn kind="ghost" size="sm" onClick={openAssign}><Users size={14} /> {t("توزيع المناديب على الموظفين", "Distribute riders")}</Btn>}
+            {isAdmin && <Btn kind="ghost" size="sm" onClick={() => setShowMove(true)}><Users size={14} /> {t("نقل مناديب بين الموظفين", "Move riders")}</Btn>}
             <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-44" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
             <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All")}</option><option value="pending">{t("لم يحوّل", "Not transferred")}</option><option value="review">{tr("قيد المراجعة")}</option><option value="approved">{tr("قبول يدوي")}</option><option value="rejected">{tr("رفض يدوي")}</option></select>
             <select value={agentF} onChange={(e) => setAgentF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
@@ -1545,6 +1563,22 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             ))}
           </div>
         )}
+      </Modal>
+
+      <Modal open={showMove} onClose={() => setShowMove(false)} title={t("نقل مناديب بين الموظفين", "Move Riders Between Staff")}>
+        <div className="space-y-3">
+          <Field label={t("من موظف", "From agent")}><select className={inputCls} value={moveFrom} onChange={(e) => setMoveFrom(e.target.value)}><option value="">{t("— اختر —", "— select —")}</option>{staffList.map((s) => { const c = db.riders.filter((r) => r.company === company && (r.codAgent || "").toLowerCase() === s.email.toLowerCase()).length; return <option key={s.email} value={s.email}>{s.name} ({c})</option>; })}</select></Field>
+          <Field label={t("إلى موظف", "To agent")}><select className={inputCls} value={moveTo} onChange={(e) => setMoveTo(e.target.value)}><option value="">{t("— اختر —", "— select —")}</option>{staffList.filter((s) => s.email !== moveFrom).map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}</select></Field>
+          {moveFrom && <p className="text-xs text-slate-500">{t("عدد مناديب هذا الموظف:", "Riders with this agent:")} <b>{fromRiders.length}</b></p>}
+          <Field label={t("كم مندوب تنقل؟", "How many?")}>
+            <div className="flex gap-2">
+              <label className="flex items-center gap-1 text-sm"><input type="radio" checked={moveMode === "all"} onChange={() => setMoveMode("all")} /> {t("الكل", "All")}</label>
+              <label className="flex items-center gap-1 text-sm"><input type="radio" checked={moveMode === "count"} onChange={() => setMoveMode("count")} /> {t("عدد معيّن", "A number")}</label>
+              {moveMode === "count" && <input type="number" min="1" max={fromRiders.length} className={inputCls + " w-24"} value={moveCount} onChange={(e) => setMoveCount(e.target.value)} placeholder="0" />}
+            </div>
+          </Field>
+          <div className="flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setShowMove(false)}>{tr("إلغاء")}</Btn><Btn onClick={doMove}>{t("نقل", "Move")}</Btn></div>
+        </div>
       </Modal>
 
       <Modal open={showAssign} onClose={() => setShowAssign(false)} title={t("توزيع المناديب على الموظفين", "Distribute Riders to Staff")}>
@@ -2898,6 +2932,7 @@ function RegistrationModule({ db, save, user }) {
   const [q, setQ] = useState("");
   const [statusF, setStatusF] = useState("all");
   const [assigneeF, setAssigneeF] = useState("all");
+  const [areaF, setAreaF] = useState("all");
   const [dateF, setDateF] = useState("");
   const [manageOpen, setManageOpen] = useState(false);
 
@@ -2938,10 +2973,12 @@ function RegistrationModule({ db, save, user }) {
   visibleRegs.forEach((r) => { counts[regStatus(r)]++; });
   const perStaff = {}; agents.forEach((s) => { perStaff[s.id] = regs.filter((r) => r.assignee === s.id && !r.converted).length; });
 
+  const regAreas = Array.from(new Set(visibleRegs.map((r) => (r.wilaya || r.area || "").trim()).filter(Boolean))).sort();
   const rows = visibleRegs.filter((r) => (
     (r.fullName.includes(q) || (r.phone || "").includes(q) || (r.idNumber || "").includes(q)) &&
     (statusF === "all" || regStatus(r) === statusF) &&
     (assigneeF === "all" || r.assignee === assigneeF) &&
+    (areaF === "all" || (r.wilaya || r.area || "").trim() === areaF) &&
     (!dateF || r.createdAt === dateF)
   )).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
@@ -2982,10 +3019,11 @@ function RegistrationModule({ db, save, user }) {
           <Field label={t("بحث", "Search")}><input className={inputCls} placeholder={t("اسم / هاتف / بطاقة", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></Field>
           <Field label={t("الحالة", "Status")}><select className={inputCls} value={statusF} onChange={(e) => setStatusF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{Object.keys(REG_STATUS_LABEL).map((k) => <option key={k} value={k}>{t(REG_STATUS_LABEL[k][0], REG_STATUS_LABEL[k][1])}</option>)}</select></Field>
           <Field label={t("الموظف", "Assignee")}><select className={inputCls} value={assigneeF} onChange={(e) => setAssigneeF(e.target.value)}><option value="all">{t("الكل", "All")}</option>{agents.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
+          <Field label={t("المنطقة", "Area")}><select className={inputCls} value={areaF} onChange={(e) => setAreaF(e.target.value)}><option value="all">{t("كل المناطق", "All areas")}</option>{regAreas.map((a) => <option key={a} value={a}>{a}</option>)}</select></Field>
           <Field label={t("تاريخ التسجيل", "Date")}><input type="date" className={inputCls} value={dateF} onChange={(e) => setDateF(e.target.value)} /></Field>
           <div className="flex items-end gap-2">
             <Btn kind="ghost" onClick={() => exportExcel(rows.map((r) => ({ المندوب: r.fullName, الهاتف: r.phone, البطاقة: r.idNumber || "", الجنسية: r.nationality || "", الولاية: r.wilaya || "", المركبة: r.vehicleType || "", رخصة: r.hasLicense ? tr("نعم") : tr("لا"), الشركة: r.company ? cLabel(r.company) : "", البنك: r.bankName || "", رقم_الحساب: r.bank || "", سويفت: r.swift || "", الموظف: agentName(r.assignee), الحالة: t(REG_STATUS_LABEL[regStatus(r)][0], REG_STATUS_LABEL[regStatus(r)][1]), التاريخ: r.createdAt })), "Registrations")}><Download size={15} /> Excel ({rows.length})</Btn>
-            {(q || statusF !== "all" || assigneeF !== "all" || dateF) && <Btn kind="ghost" onClick={() => { setQ(""); setStatusF("all"); setAssigneeF("all"); setDateF(""); }}>{t("مسح الفلاتر", "Clear")}</Btn>}
+            {(q || statusF !== "all" || assigneeF !== "all" || areaF !== "all" || dateF) && <Btn kind="ghost" onClick={() => { setQ(""); setStatusF("all"); setAssigneeF("all"); setAreaF("all"); setDateF(""); }}>{t("مسح الفلاتر", "Clear")}</Btn>}
           </div>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
