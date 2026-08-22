@@ -2923,7 +2923,11 @@ function RegistrationModule({ db, save, user }) {
       notes: r.notes || "", username: r.username || r.phone, password: r.password || "1234", lastWorked: null,
     };
     const pickRA = makeAgentPicker(db, rider.company); const riderA = { ...rider, codAgent: rider.codAgent || pickRA() };
+    // تحديث محلي فوري + كتابة موجّهة ذرّية (تتفادى فشل حفظ كل البيانات)
     save({ ...db, riders: [...db.riders, riderA], registrations: regs.map((x) => (x.id === r.id ? { ...x, converted: true, convertedAt: todayStr() } : x)) });
+    supabase.rpc("convert_registration", { p_reg_id: r.id, p_rider: riderA }).then(({ error }) => {
+      if (error) alert(tr("تعذّر حفظ الاعتماد، حاول مرة أخرى"));
+    });
     setSel(null);
   };
 
@@ -3720,7 +3724,7 @@ export default function App() {
     const jobs = [];
     if (creds && creds.phone) jobs.push(supabase.rpc("rider_login", { p_phone: creds.phone, p_password: creds.password }).then(({ data }) => { if (data) setRider({ view: normalizeDB(data), creds }); else { try { localStorage.removeItem("mrd_rider"); } catch (e) {} } }));
     if (hc && hc.user) jobs.push(supabase.rpc("hr_emp_login", { p_user: hc.user, p_password: hc.password }).then(({ data }) => { if (data) setHrEmp({ data, creds: hc }); else { try { localStorage.removeItem("mrd_hremp"); } catch (e) {} } }));
-    if (jobs.length) Promise.all(jobs).finally(() => setRestoring(false)); else setRestoring(false);
+    if (jobs.length) { Promise.all(jobs).finally(() => setRestoring(false)); setTimeout(() => setRestoring(false), 12000); } else setRestoring(false);
   }, []);
 
   useEffect(() => {
