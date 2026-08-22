@@ -544,7 +544,7 @@ function exportExcel(rows, name) {
    Money summary per rider
    ============================================================ */
 function authorizedCodAgents(db) {
-  return Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).filter(([, p]) => p && p.codAgentPerm).map(([em]) => em);
+  return Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).filter(([, p]) => p && p.codAgentPerm && !p.disabled).map(([em]) => em);
 }
 // يعطي أقل موظف تحميلاً كل مرة (توزيع متوازن للمناديب الجدد فقط)
 function makeAgentPicker(db, company) {
@@ -1356,7 +1356,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   };
   const decideAdj = (id, ok) => save({ ...db, codAdjustments: (db.codAdjustments || []).map((a) => (a.id === id ? { ...a, status: ok ? "approved" : "rejected", decidedBy: (user && (user.name || user.email)) || "", decidedAt: new Date().toISOString().slice(0, 16).replace("T", " ") } : a)) });
   const pendingAdj = (db.codAdjustments || []).filter((a) => a.company === company && a.status === "pending");
-  const staffList = Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).filter(([, p]) => p && p.codAgentPerm).map(([em, p]) => ({ email: em, name: (p && p.name) || em }));
+  const staffList = Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).filter(([, p]) => p && p.codAgentPerm && !p.disabled).map(([em, p]) => ({ email: em, name: (p && p.name) || em }));
   const [showAssign, setShowAssign] = useState(false);
   const [assignDraft, setAssignDraft] = useState({});
   const openAssign = () => { const d = {}; db.riders.filter((r) => r.company === company).forEach((r) => { d[r.id] = r.codAgent || ""; }); setAssignDraft(d); setShowAssign(true); };
@@ -2715,6 +2715,13 @@ function Employees({ db, save, user }) {
     const cur = (db.staff || {})[a.email] || { role: a.role, name: a.name, company: a.company };
     save({ ...db, staff: { ...(db.staff || {}), [a.email]: { ...cur, codAgentPerm: !a.codAgentPerm } } });
   };
+  const toggleDisabled = (a) => {
+    const cur = (db.staff || {})[a.email] || { role: a.role, name: a.name, company: a.company };
+    const willDisable = !a.disabled;
+    if (willDisable && !window.confirm(t("تعطيل هذا الموظف؟ لن يستطيع الدخول ولن يُوزّع له مناديب.", "Disable this staff? They can't log in and won't get assignments."))) return;
+    // عند التعطيل: أزل صلاحياته من التوزيع أيضاً
+    save({ ...db, staff: { ...(db.staff || {}), [a.email]: { ...cur, disabled: willDisable, regAgent: willDisable ? false : cur.regAgent, codAgentPerm: willDisable ? false : cur.codAgentPerm } } });
+  };
   const doReset = () => {
     if (!resetPw || resetPw.length < 6) return setResetMsg(t("كلمة مرور 6 خانات على الأقل", "Password must be 6+ characters"));
     setResetBusy(true); setResetMsg("");
@@ -2778,9 +2785,11 @@ function Employees({ db, save, user }) {
               <span dir="ltr" className="font-mono text-xs text-slate-700">{a.email}</span>
               <span className="flex items-center gap-2">
                 <Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}
+                {a.disabled ? <Pill color="#c0341d">{t("معطّل", "Disabled")}</Pill> : null}
                 {a.codAgentPerm ? <Pill color={BRAND.blue}>{t("متابع تحويلات", "Transfers agent")}</Pill> : null}
                 {isAdmin && <button onClick={() => toggleAgent(a)} className="text-xs font-semibold" style={{ color: a.regAgent ? "#c0341d" : "#0f9d58" }} title={t("تفعيل/إلغاء متابعة التسجيل", "Toggle registration follow-up")}>{a.regAgent ? t("إلغاء متابعة التسجيل", "Unset reg") : t("متابع تسجيل", "Reg agent")}</button>}
                 {isAdmin && <button onClick={() => toggleCodAgent(a)} className="text-xs font-semibold" style={{ color: a.codAgentPerm ? "#c0341d" : BRAND.blue }} title={t("تفعيل/إلغاء متابعة التحويلات", "Toggle transfers follow-up")}>{a.codAgentPerm ? t("إلغاء متابعة التحويلات", "Unset transfers") : t("متابع تحويلات", "Transfers agent")}</button>}
+                {isAdmin && a.email !== "sulimanalhatmi.9669@gmail.com" && <button onClick={() => toggleDisabled(a)} className="text-xs font-semibold" style={{ color: a.disabled ? "#0f9d58" : "#c0341d" }} title={t("تعطيل/تفعيل الحساب", "Disable/enable account")}>{a.disabled ? t("تفعيل الحساب", "Enable") : t("تعطيل الحساب", "Disable")}</button>}
                 {isAdmin && <button onClick={() => { setResetAcc(a); setResetPw(""); setResetMsg(""); }} className="text-xs font-semibold" style={{ color: BRAND.orange }} title={t("إعادة تعيين كلمة المرور", "Reset password")}><KeyRound size={13} className="inline" /> {t("كلمة المرور", "Password")}</button>}
               </span>
             </div>
@@ -2939,6 +2948,21 @@ function RegistrationModule({ db, save, user }) {
   const upd = (id, patch) => save({ ...db, registrations: regs.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
   const toggleStep = (r, key) => upd(r.id, { steps: { ...(r.steps || {}), [key]: !(r.steps && r.steps[key]) } });
   const reassign = (r, who) => upd(r.id, { assignee: who });
+  // نقل مسجّلين من موظف إلى موظف آخر (جماعي)
+  const [showRegMove, setShowRegMove] = useState(false);
+  const [rmFrom, setRmFrom] = useState(""); const [rmTo, setRmTo] = useState("");
+  const [rmMode, setRmMode] = useState("all"); const [rmCount, setRmCount] = useState("");
+  const rmFromList = rmFrom ? regs.filter((r) => r.assignee === rmFrom && !r.converted) : [];
+  const doRegMove = () => {
+    if (!rmFrom || !rmTo) { alert(t("اختر الموظف المنقول منه وإليه", "Choose from and to")); return; }
+    if (rmFrom === rmTo) { alert(t("لا يمكن النقل لنفس الموظف", "Same agent")); return; }
+    let n = rmMode === "all" ? rmFromList.length : Math.min(parseInt(rmCount, 10) || 0, rmFromList.length);
+    if (n <= 0) { alert(t("لا يوجد طلبات للنقل", "Nothing to move")); return; }
+    const ids = new Set(rmFromList.slice(0, n).map((r) => r.id));
+    save({ ...db, registrations: regs.map((r) => (ids.has(r.id) ? { ...r, assignee: rmTo } : r)) });
+    setShowRegMove(false); setRmFrom(""); setRmTo(""); setRmCount(""); setRmMode("all");
+    alert(t("تم نقل " + n + " طلب.", "Moved " + n + " request(s)."));
+  };
   const delReg = (r) => { if (window.confirm(t("حذف هذا الطلب نهائياً؟", "Delete this request permanently?"))) { save({ ...db, registrations: regs.filter((x) => x.id !== r.id) }); setSel(null); } };
   const [rejectFor, setRejectFor] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -2996,6 +3020,7 @@ function RegistrationModule({ db, save, user }) {
         <div className="flex items-center gap-2 flex-wrap">
           {COMPANIES.map((c) => <a key={c} href={"#/register/" + REG_LINK_FOR[c]} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-3 py-2 rounded-lg" style={{ background: CMETA[c].color + "18", color: CMETA[c].color }}>{cLabel(c)} ↗</a>)}
           {isManager && <Btn kind="ghost" onClick={() => setManageOpen(true)}><UserCog size={15} /> {t("موظفو التوزيع", "Assignees")}</Btn>}
+          {isManager && <Btn kind="ghost" onClick={() => setShowRegMove(true)}><Users size={15} /> {t("نقل مسجّلين بين الموظفين", "Move requests")}</Btn>}
         </div>
       </div>
 
@@ -3112,6 +3137,22 @@ function RegistrationModule({ db, save, user }) {
             <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setRejectFor(null)}>{tr("إلغاء")}</Btn><Btn onClick={doReject} className="!bg-red-600">{t("تأكيد الرفض", "Confirm Reject")}</Btn></div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={showRegMove} onClose={() => setShowRegMove(false)} title={t("نقل مسجّلين بين الموظفين", "Move Requests Between Staff")}>
+        <div className="space-y-3">
+          <Field label={t("من موظف", "From agent")}><select className={inputCls} value={rmFrom} onChange={(e) => setRmFrom(e.target.value)}><option value="">{t("— اختر —", "— select —")}</option>{agents.map((s) => { const c = regs.filter((r) => r.assignee === s.id && !r.converted).length; return <option key={s.id} value={s.id}>{s.name} ({c})</option>; })}</select></Field>
+          <Field label={t("إلى موظف", "To agent")}><select className={inputCls} value={rmTo} onChange={(e) => setRmTo(e.target.value)}><option value="">{t("— اختر —", "— select —")}</option>{agents.filter((s) => s.id !== rmFrom).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
+          {rmFrom && <p className="text-xs text-slate-500">{t("عدد طلبات هذا الموظف:", "Requests with this agent:")} <b>{rmFromList.length}</b></p>}
+          <Field label={t("كم طلب تنقل؟", "How many?")}>
+            <div className="flex gap-2 items-center">
+              <label className="flex items-center gap-1 text-sm"><input type="radio" checked={rmMode === "all"} onChange={() => setRmMode("all")} /> {t("الكل", "All")}</label>
+              <label className="flex items-center gap-1 text-sm"><input type="radio" checked={rmMode === "count"} onChange={() => setRmMode("count")} /> {t("عدد معيّن", "A number")}</label>
+              {rmMode === "count" && <input type="number" min="1" max={rmFromList.length} className={inputCls + " w-24"} value={rmCount} onChange={(e) => setRmCount(e.target.value)} placeholder="0" />}
+            </div>
+          </Field>
+          <div className="flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setShowRegMove(false)}>{tr("إلغاء")}</Btn><Btn onClick={doRegMove}>{t("نقل", "Move")}</Btn></div>
+        </div>
       </Modal>
 
       <Modal open={manageOpen} onClose={() => setManageOpen(false)} title={t("موظفو التوزيع التلقائي", "Auto-assign Staff")}>
@@ -3791,8 +3832,9 @@ export default function App() {
     supabase.from("app_state").select("data, updated_at").eq("id", APP_ROW_ID).single().then(({ data }) => {
       const norm = normalizeDB(data ? data.data : null);
       if (data) lastAtRef.current = data.updated_at ? new Date(data.updated_at).getTime() : Date.now();
-      setDb(norm);
       const prof = resolveProf(norm);
+      if (prof && prof.disabled) { alert(t("تم تعطيل هذا الحساب. تواصل مع الإدارة.", "This account is disabled. Contact admin.")); supabase.auth.signOut(); setStaff(null); setDb(null); return; }
+      setDb(norm);
       setStaff({ ...prof, email });
     });
     const ch = supabase.channel("app_state_changes")
