@@ -1191,15 +1191,18 @@ function OrdersTab({ company, db, save, user }) {
   // سجل الطلبات: مندوب + مدة
   const [hRider, setHRider] = useState("all");
   const [hRiderQ, setHRiderQ] = useState("");
+  const [hType, setHType] = useState("all");
   const [hFrom, setHFrom] = useState("");
   const [hTo, setHTo] = useState("");
   const companyRiders = db.riders.filter((r) => r.company === company);
+  const riderTypeOf = (id) => { const r = db.riders.find((x) => x.id === id); return (r && r.type) || ""; };
+  const typeMatch = (id) => hType === "all" || riderTypeOf(id) === hType;
   const hRiderList = companyRiders.filter((r) => { const q = hRiderQ.trim().toLowerCase(); return !q || (r.name || "").toLowerCase().includes(q) || (r.phone || "").includes(q) || (r.companyId || "").toLowerCase().includes(q); });
   const inRange = (dt) => (!hFrom || dt >= hFrom) && (!hTo || dt <= hTo);
   const histRows = ims.filter((im) => inRange(im.date || "")).map((im) => {
-    const res = (im.results || []).filter((r) => hRider === "all" || r.riderId === hRider);
+    const res = (im.results || []).filter((r) => (hRider === "all" || r.riderId === hRider) && typeMatch(r.riderId));
     return { date: im.date, orders: res.reduce((a, r) => a + (r.orders || 0), 0), cod: res.reduce((a, r) => a + (r.cod || 0), 0), due: res.reduce((a, r) => a + (r.transferDue || 0), 0) };
-  }).filter((x) => x.orders > 0 || x.cod > 0 || hRider === "all").sort((a, b) => (a.date < b.date ? 1 : -1));
+  }).filter((x) => x.orders > 0 || x.cod > 0 || (hRider === "all" && hType === "all")).sort((a, b) => (a.date < b.date ? 1 : -1));
   const hTotals = histRows.reduce((a, x) => ({ orders: a.orders + x.orders, cod: a.cod + x.cod, due: a.due + x.due }), { orders: 0, cod: 0, due: 0 });
   const setRow = (i, which, v) => setEditImp((e) => ({ ...e, results: e.results.map((r, idx) => (idx === i ? { ...r, [which]: v } : r)) }));
   const saveImport = () => {
@@ -1227,14 +1230,15 @@ function OrdersTab({ company, db, save, user }) {
 
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل الطلبات والمبالغ", "Orders & Amounts History")}</h3>
-        <div className="grid md:grid-cols-4 gap-3 mb-4">
+        <div className="grid md:grid-cols-5 gap-3 mb-4">
           <Field label={t("المندوب", "Rider")}>
             <input className={inputCls + " mb-1"} placeholder={t("ابحث بالاسم / الهاتف / ID", "search name / phone / ID")} value={hRiderQ} onChange={(e) => setHRiderQ(e.target.value)} />
             <select className={inputCls} value={hRider} onChange={(e) => setHRider(e.target.value)}><option value="all">{t("كل المناديب (إجمالي)", "All riders (total)")}</option>{hRiderList.map((r) => <option key={r.id} value={r.id}>{r.name}{r.companyId ? " — " + r.companyId : ""}</option>)}</select>
           </Field>
           <Field label={t("من تاريخ", "From")}><input type="date" className={inputCls} value={hFrom} onChange={(e) => setHFrom(e.target.value)} /></Field>
           <Field label={t("إلى تاريخ", "To")}><input type="date" className={inputCls} value={hTo} onChange={(e) => setHTo(e.target.value)} /></Field>
-          <div className="flex items-end">{(hFrom || hTo || hRider !== "all" || hRiderQ) && <Btn kind="ghost" onClick={() => { setHRider("all"); setHFrom(""); setHTo(""); setHRiderQ(""); }}>{t("مسح", "Clear")}</Btn>}</div>
+          <Field label={t("نوع المندوب", "Rider type")}><select className={inputCls} value={hType} onChange={(e) => setHType(e.target.value)}><option value="all">{t("الكل", "All")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Under Training">{t("تحت التدريب", "Under Training")}</option></select></Field>
+          <div className="flex items-end">{(hFrom || hTo || hRider !== "all" || hRiderQ || hType !== "all") && <Btn kind="ghost" onClick={() => { setHRider("all"); setHFrom(""); setHTo(""); setHRiderQ(""); setHType("all"); }}>{t("مسح", "Clear")}</Btn>}</div>
         </div>
 
         <div className="grid grid-cols-3 gap-3 mb-4">
