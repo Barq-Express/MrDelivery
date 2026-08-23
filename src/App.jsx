@@ -1190,9 +1190,11 @@ function OrdersTab({ company, db, save, user }) {
   const [editImp, setEditImp] = useState(null);
   // سجل الطلبات: مندوب + مدة
   const [hRider, setHRider] = useState("all");
+  const [hRiderQ, setHRiderQ] = useState("");
   const [hFrom, setHFrom] = useState("");
   const [hTo, setHTo] = useState("");
   const companyRiders = db.riders.filter((r) => r.company === company);
+  const hRiderList = companyRiders.filter((r) => { const q = hRiderQ.trim().toLowerCase(); return !q || (r.name || "").toLowerCase().includes(q) || (r.phone || "").includes(q) || (r.companyId || "").toLowerCase().includes(q); });
   const inRange = (dt) => (!hFrom || dt >= hFrom) && (!hTo || dt <= hTo);
   const histRows = ims.filter((im) => inRange(im.date || "")).map((im) => {
     const res = (im.results || []).filter((r) => hRider === "all" || r.riderId === hRider);
@@ -1226,10 +1228,13 @@ function OrdersTab({ company, db, save, user }) {
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل الطلبات والمبالغ", "Orders & Amounts History")}</h3>
         <div className="grid md:grid-cols-4 gap-3 mb-4">
-          <Field label={t("المندوب", "Rider")}><select className={inputCls} value={hRider} onChange={(e) => setHRider(e.target.value)}><option value="all">{t("كل المناديب (إجمالي)", "All riders (total)")}</option>{companyRiders.map((r) => <option key={r.id} value={r.id}>{r.name}{r.companyId ? " — " + r.companyId : ""}</option>)}</select></Field>
+          <Field label={t("المندوب", "Rider")}>
+            <input className={inputCls + " mb-1"} placeholder={t("ابحث بالاسم / الهاتف / ID", "search name / phone / ID")} value={hRiderQ} onChange={(e) => setHRiderQ(e.target.value)} />
+            <select className={inputCls} value={hRider} onChange={(e) => setHRider(e.target.value)}><option value="all">{t("كل المناديب (إجمالي)", "All riders (total)")}</option>{hRiderList.map((r) => <option key={r.id} value={r.id}>{r.name}{r.companyId ? " — " + r.companyId : ""}</option>)}</select>
+          </Field>
           <Field label={t("من تاريخ", "From")}><input type="date" className={inputCls} value={hFrom} onChange={(e) => setHFrom(e.target.value)} /></Field>
           <Field label={t("إلى تاريخ", "To")}><input type="date" className={inputCls} value={hTo} onChange={(e) => setHTo(e.target.value)} /></Field>
-          <div className="flex items-end">{(hFrom || hTo || hRider !== "all") && <Btn kind="ghost" onClick={() => { setHRider("all"); setHFrom(""); setHTo(""); }}>{t("مسح", "Clear")}</Btn>}</div>
+          <div className="flex items-end">{(hFrom || hTo || hRider !== "all" || hRiderQ) && <Btn kind="ghost" onClick={() => { setHRider("all"); setHFrom(""); setHTo(""); setHRiderQ(""); }}>{t("مسح", "Clear")}</Btn>}</div>
         </div>
 
         <div className="grid grid-cols-3 gap-3 mb-4">
