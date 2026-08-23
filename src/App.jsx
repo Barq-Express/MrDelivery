@@ -1188,6 +1188,17 @@ function OrdersTab({ company, db, save, user }) {
     save({ ...db, imports: [...db.imports, imp], riders });
   };
   const [editImp, setEditImp] = useState(null);
+  // سجل الطلبات: مندوب + مدة
+  const [hRider, setHRider] = useState("all");
+  const [hFrom, setHFrom] = useState("");
+  const [hTo, setHTo] = useState("");
+  const companyRiders = db.riders.filter((r) => r.company === company);
+  const inRange = (dt) => (!hFrom || dt >= hFrom) && (!hTo || dt <= hTo);
+  const histRows = ims.filter((im) => inRange(im.date || "")).map((im) => {
+    const res = (im.results || []).filter((r) => hRider === "all" || r.riderId === hRider);
+    return { date: im.date, orders: res.reduce((a, r) => a + (r.orders || 0), 0), cod: res.reduce((a, r) => a + (r.cod || 0), 0), due: res.reduce((a, r) => a + (r.transferDue || 0), 0) };
+  }).filter((x) => x.orders > 0 || x.cod > 0 || hRider === "all").sort((a, b) => (a.date < b.date ? 1 : -1));
+  const hTotals = histRows.reduce((a, x) => ({ orders: a.orders + x.orders, cod: a.cod + x.cod, due: a.due + x.due }), { orders: 0, cod: 0, due: 0 });
   const setRow = (i, which, v) => setEditImp((e) => ({ ...e, results: e.results.map((r, idx) => (idx === i ? { ...r, [which]: v } : r)) }));
   const saveImport = () => {
     const results = editImp.results.map((r) => {
@@ -1211,6 +1222,36 @@ function OrdersTab({ company, db, save, user }) {
     <div className="space-y-5">
       <Card className="p-4 text-sm text-slate-600">{note}</Card>
       <ExcelImporter company={company} riders={db.riders} onApply={onApply} onAddRider={(nr) => { const p = String(nr.phone || "").replace(/\D/g, ""); const c = String(nr.companyId || "").trim(); const exists = db.riders.some((x) => (p && String(x.phone).replace(/\D/g, "") === p) || (c && (x.companyId || "") === c)); if (exists) { alert(t("هذا المندوب مسجّل بالفعل", "This rider already exists")); return; } const pick = makeAgentPicker(db, company); save({ ...db, riders: [...db.riders, { ...nr, id: uid(), lastWorked: null, codAgent: nr.codAgent || pick() }] }); }} />
+
+      <Card className="p-5">
+        <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل الطلبات والمبالغ", "Orders & Amounts History")}</h3>
+        <div className="grid md:grid-cols-4 gap-3 mb-4">
+          <Field label={t("المندوب", "Rider")}><select className={inputCls} value={hRider} onChange={(e) => setHRider(e.target.value)}><option value="all">{t("كل المناديب (إجمالي)", "All riders (total)")}</option>{companyRiders.map((r) => <option key={r.id} value={r.id}>{r.name}{r.companyId ? " — " + r.companyId : ""}</option>)}</select></Field>
+          <Field label={t("من تاريخ", "From")}><input type="date" className={inputCls} value={hFrom} onChange={(e) => setHFrom(e.target.value)} /></Field>
+          <Field label={t("إلى تاريخ", "To")}><input type="date" className={inputCls} value={hTo} onChange={(e) => setHTo(e.target.value)} /></Field>
+          <div className="flex items-end">{(hFrom || hTo || hRider !== "all") && <Btn kind="ghost" onClick={() => { setHRider("all"); setHFrom(""); setHTo(""); }}>{t("مسح", "Clear")}</Btn>}</div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="rounded-xl p-3 text-center" style={{ background: "#eef2ff" }}><div className="text-xs text-slate-500">{t("إجمالي الطلبات", "Total Orders")}</div><div className="text-2xl font-bold" style={{ color: BRAND.blue }}>{hTotals.orders}</div></div>
+          <div className="rounded-xl p-3 text-center" style={{ background: "#f0fdf4" }}><div className="text-xs text-slate-500">{t("إجمالي COD", "Total COD")}</div><div className="text-2xl font-bold" style={{ color: "#0f9d58" }}>{omr(hTotals.cod)}</div></div>
+          <div className="rounded-xl p-3 text-center" style={{ background: "#fef9c3" }}><div className="text-xs text-slate-500">{t("المطلوب تحويله", "To Transfer")}</div><div className="text-2xl font-bold" style={{ color: "#a16207" }}>{omr(hTotals.due)}</div></div>
+        </div>
+
+        <div className="flex justify-end mb-2">
+          <Btn kind="ghost" size="sm" onClick={() => exportExcel(histRows.map((x) => ({ التاريخ: x.date, الطلبات: x.orders, COD: x.cod, المطلوب_تحويله: x.due })), "History_" + company + (hRider !== "all" ? "_" + (companyRiders.find((r) => r.id === hRider)?.name || "") : ""))}><Download size={14} /> Excel</Btn>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("التاريخ", "Date"), t("الطلبات", "Orders"), "COD", t("المطلوب تحويله", "To Transfer")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <tbody>
+              {histRows.length === 0 ? <tr><td colSpan={4} className="text-center text-slate-400 py-6">{t("لا توجد بيانات في هذه المدة", "No data in this range")}</td></tr>
+                : histRows.map((x, i) => <tr key={i} className="border-b border-slate-50"><td className="px-3 py-2 font-semibold" dir="ltr">{x.date}</td><td className="px-3">{x.orders}</td><td className="px-3">{omr(x.cod)}</td><td className="px-3">{omr(x.due)}</td></tr>)}
+            </tbody>
+            {histRows.length > 0 && <tfoot><tr className="font-bold bg-slate-50"><td className="px-3 py-2">{t("الإجمالي", "Total")}</td><td className="px-3">{hTotals.orders}</td><td className="px-3">{omr(hTotals.cod)}</td><td className="px-3">{omr(hTotals.due)}</td></tr></tfoot>}
+          </table>
+        </div>
+      </Card>
       {latest && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
