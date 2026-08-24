@@ -1413,6 +1413,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const [histFor, setHistFor] = useState(null);
   const [rejFor, setRejFor] = useState(null);
   const [rejReason, setRejReason] = useState("");
+  const [decidingId, setDecidingId] = useState(null);
   const openAdj = (r, curCod) => { setAdjFor({ rider: r, cur: curCod }); setAdjNew(String((curCod || 0).toFixed(3))); setAdjReason(""); setAdjErr(""); };
   const submitAdj = () => {
     const newVal = Number(adjNew);
@@ -1471,10 +1472,11 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     const me = (user && (user.name || user.email)) || "";
     const label = status === "Approved" ? tr("قبول يدوي") : tr("رفض يدوي");
     const at = new Date().toISOString().slice(0, 16).replace("T", " ");
-    save({ ...db, transfers: db.transfers.map((tf) => (tf.id === id ? { ...tf, status, recon: status === "Approved" ? "ok" : "manual", reconLabel: label, rejectReason: status === "Rejected" ? (reason || "") : "", decidedBy: me, decidedAt: at, auditLog: [...(tf.auditLog || []), { action: label, by: me, at, reason: reason || "" }] } : tf)) });
+    setDecidingId(id); // مؤشّر بصري فقط (بدون كتابة كل القائمة حتى لا تُمسح إيصالات المناديب)
     supabase.rpc("admin_decide_transfer", { p_id: id, p_status: status, p_by: me, p_label: label, p_reason: reason || "" }).then(({ error }) => {
+      setDecidingId(null);
       if (error) { alert(tr("تعذّر حفظ القرار، حاول مرة أخرى")); return; }
-      if (onRefresh) setTimeout(onRefresh, 400);
+      if (onRefresh) onRefresh(); // اجلب أحدث نسخة (تشمل القرار + إيصالات المناديب)
     });
   };
   const setStatus = (id, status) => {
@@ -2975,7 +2977,7 @@ function Employees({ db, save, user }) {
   );
 }
 
-function ArchiveWindow({ db, save }) {
+function ArchiveWindow({ db, save, onRefresh }) {
   const [q, setQ] = useState("");
   const archive = db.archive || [];
   const list = archive.filter((r) => r.name.includes(q) || (r.phone || "").includes(q) || (r.companyId || "").includes(q));
@@ -2986,15 +2988,12 @@ function ArchiveWindow({ db, save }) {
   };
   const purge = (r) => {
     if (!window.confirm(t("حذف نهائي لهذا المندوب مع كل بياناته (طلبات + تحويلات)؟ لا يمكن التراجع.", "Permanently delete this rider and all their data (orders + transfers)? This cannot be undone."))) return;
-    const imports = db.imports.map((im) => ({ ...im, results: im.results.filter((x) => x.riderId !== r.id), notWorkedIds: (im.notWorkedIds || []).filter((id) => id !== r.id) }));
-    save({ ...db, archive: archive.filter((x) => x.id !== r.id), imports, transfers: db.transfers.filter((tt) => tt.riderId !== r.id) });
+    supabase.rpc("purge_riders", { p_ids: [r.id] }).then(({ error }) => { if (error) { alert(tr("تعذّر الحذف، حاول مرة أخرى")); return; } if (onRefresh) onRefresh(); });
   };
   const purgeAll = () => {
     if (archive.length === 0) return;
     if (!window.confirm(t("إفراغ الأرشيف نهائياً وحذف كل بياناته؟ لا يمكن التراجع.", "Permanently empty the archive and delete all its data? This cannot be undone."))) return;
-    const ids = new Set(archive.map((r) => r.id));
-    const imports = db.imports.map((im) => ({ ...im, results: im.results.filter((x) => !ids.has(x.riderId)), notWorkedIds: (im.notWorkedIds || []).filter((id) => !ids.has(id)) }));
-    save({ ...db, archive: [], imports, transfers: db.transfers.filter((tt) => !ids.has(tt.riderId)) });
+    supabase.rpc("purge_riders", { p_ids: archive.map((r) => r.id) }).then(({ error }) => { if (error) { alert(tr("تعذّر الحذف، حاول مرة أخرى")); return; } if (onRefresh) onRefresh(); });
   };
 
   return (
@@ -4100,7 +4099,7 @@ export default function App() {
     if (activeItem.kind === "registration") return <RegistrationModule db={db} save={save} user={user} onRefresh={refreshDb} />;
     if (activeItem.kind === "areas") return <AreasWindow db={db} save={save} />;
     if (activeItem.kind === "banks") return <BanksWindow db={db} save={save} />;
-    if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} />;
+    if (activeItem.kind === "archive") return <ArchiveWindow db={db} save={save} onRefresh={refreshDb} />;
     if (activeItem.kind === "reports") return <ReportsScoped db={db} company={null} />;
     return null;
   };
