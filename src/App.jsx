@@ -1008,6 +1008,7 @@ function Riders({ db, save, company, user }) {
   const isAdmin = user && (user.role === "Admin" || user.role === "Operations Manager");
   const [resetOpen, setResetOpen] = useState(false);
   const [resetWord, setResetWord] = useState("");
+  const [rpage, setRpage] = useState(1); const RPER = 50;
   const archiveRider = (r) => {
     if (!window.confirm(tr("نقل هذا المندوب إلى الأرشيف؟"))) return;
     save({ ...db, riders: db.riders.filter((x) => x.id !== r.id), archive: [...(db.archive || []), { ...r, archivedAt: todayStr() }] });
@@ -1083,7 +1084,7 @@ function Riders({ db, save, company, user }) {
             {[tr("المندوب"), "ID", tr("الهاتف"), tr("المدني"), tr("المنطقة"), tr("الشركة"), tr("النوع"), tr("الحالة"), tr("آخر عمل"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
-            {list.map((r) => {
+            {list.slice((rpage - 1) * RPER, rpage * RPER).map((r) => {
               const red = r.status === "Active" && daysSince(r.lastWorked) >= NO_WORK_DAYS;
               return (
                 <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
@@ -1108,6 +1109,13 @@ function Riders({ db, save, company, user }) {
             {list.length === 0 && <tr><td colSpan={10} className="py-8 text-center text-slate-400">{tr("لا يوجد مناديب")}</td></tr>}
           </tbody>
         </table>
+        {list.length > RPER && (
+          <div className="flex items-center justify-center gap-2 mt-3 text-sm">
+            <button disabled={rpage <= 1} onClick={() => setRpage((p) => Math.max(1, p - 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("السابق", "Prev")}</button>
+            <span className="text-slate-500">{t("صفحة", "Page")} {Math.min(rpage, Math.ceil(list.length / RPER))} / {Math.ceil(list.length / RPER)} · {list.length} {t("مندوب", "riders")}</span>
+            <button disabled={rpage >= Math.ceil(list.length / RPER)} onClick={() => setRpage((p) => Math.min(Math.ceil(list.length / RPER), p + 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("التالي", "Next")}</button>
+          </div>
+        )}
       </div></Card>
 
       <Modal open={resetOpen} onClose={() => setResetOpen(false)} title={t("مسح كل المناديب", "Reset All Riders")}>
@@ -1817,6 +1825,7 @@ function AttendanceTab({ company, db, save }) {
   const [q, setQ] = useState("");
   const [typeF, setTypeF] = useState("all");
   const [statusF, setStatusF] = useState("all");
+  const [apage, setApage] = useState(1); const APER = 50;
   const [areaF, setAreaF] = useState("all");
   const dates = Array.from(new Set(db.imports.filter((im) => im.company === company).map((im) => im.date))).sort().reverse();
   const [date, setDate] = useState(dates[0] || todayStr());
@@ -1885,7 +1894,7 @@ function AttendanceTab({ company, db, save }) {
             {[tr("المندوب"), "ID", tr("الهاتف"), tr("المنطقة"), tr("النوع"), t("الحالة", "Status"), t("الأداء (فول تايم)", "Performance (FT)"), t("العذر", "Excuse")].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.slice((apage - 1) * APER, apage * APER).map((r) => (
               <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
                 <td className="py-3 px-3 font-semibold text-slate-800">{r.name}</td>
                 <td className="px-3 text-slate-500" dir="ltr">{r.companyId || "—"}</td>
@@ -1915,6 +1924,13 @@ function AttendanceTab({ company, db, save }) {
             {rows.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-slate-400">{tr("لا نتائج")}</td></tr>}
           </tbody>
         </table>
+        {rows.length > APER && (
+          <div className="flex items-center justify-center gap-2 mt-3 text-sm">
+            <button disabled={apage <= 1} onClick={() => setApage((p) => Math.max(1, p - 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("السابق", "Prev")}</button>
+            <span className="text-slate-500">{t("صفحة", "Page")} {Math.min(apage, Math.ceil(rows.length / APER))} / {Math.ceil(rows.length / APER)} · {rows.length}</span>
+            <button disabled={apage >= Math.ceil(rows.length / APER)} onClick={() => setApage((p) => Math.min(Math.ceil(rows.length / APER), p + 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("التالي", "Next")}</button>
+          </div>
+        )}
       </div>
 
       <Modal open={!!excuseFor} onClose={() => setExcuseFor(null)} title={t("عذر غياب", "Absence Excuse")}>
@@ -2078,6 +2094,7 @@ function DuesTab({ company, db, save, user }) {
   const [payFor, setPayFor] = useState(null);
   const [amt, setAmt] = useState("");
   const [note, setNote] = useState("");
+  const [dpage, setDpage] = useState(1); const DPER = 50;
   const list = db.riders.filter((r) => r.company === company && r.status === "Active" && (r.name.includes(q) || (r.phone || "").includes(q) || (r.companyId || "").includes(q)));
   const pay = () => {
     const a = Number(amt) || 0;
@@ -2141,7 +2158,7 @@ function DuesTab({ company, db, save, user }) {
       <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
         <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), tr("النوع"), t("المستحق", "Dues"), t("المدفوع", "Paid"), t("المتبقي", "Remaining"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
         <tbody>
-          {list.map((r) => { const m = riderMoney(db, r.id); const rem = m.duesRemaining; return (
+          {list.slice((dpage - 1) * DPER, dpage * DPER).map((r) => { const m = riderMoney(db, r.id); const rem = m.duesRemaining; return (
             <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
               <td className="py-3 px-3 font-semibold text-slate-800">{r.name}<div className="text-[11px] text-slate-400" dir="ltr">{r.phone}</div></td>
               <td className="px-3 text-slate-600">{r.type}</td>
@@ -2153,7 +2170,14 @@ function DuesTab({ company, db, save, user }) {
           ); })}
           {list.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-slate-400">{tr("لا يوجد مناديب")}</td></tr>}
         </tbody>
-      </table></div></Card>
+      </table>
+      {list.length > DPER && (
+        <div className="flex items-center justify-center gap-2 mt-3 text-sm">
+          <button disabled={dpage <= 1} onClick={() => setDpage((p) => Math.max(1, p - 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("السابق", "Prev")}</button>
+          <span className="text-slate-500">{t("صفحة", "Page")} {Math.min(dpage, Math.ceil(list.length / DPER))} / {Math.ceil(list.length / DPER)} · {list.length}</span>
+          <button disabled={dpage >= Math.ceil(list.length / DPER)} onClick={() => setDpage((p) => Math.min(Math.ceil(list.length / DPER), p + 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("التالي", "Next")}</button>
+        </div>
+      )}</div></Card>
 
       {(db.payouts || []).some((p) => db.riders.some((r) => r.id === p.riderId && r.company === company)) && (
         <Card className="p-4">
@@ -2621,6 +2645,7 @@ function ShiftsWindow({ db, save, company = null }) {
   const [areaF, setAreaF] = useState("all");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [spage, setSpage] = useState(1); const SPER = 50;
   const tc = todayCode();
   const workedToday = (rid) => db.imports.some((im) => im.date === todayStr() && im.results.some((r) => r.riderId === rid && r.matched));
   const toggleStart = (rid) => {
@@ -2703,7 +2728,7 @@ function ShiftsWindow({ db, save, company = null }) {
             {[tr("المندوب"), tr("الشركة"), tr("النوع"), tr("وقت الشفت"), tr("الأيام"), ""].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}
           </tr></thead>
           <tbody>
-            {list.map((r) => (
+            {list.slice((spage - 1) * SPER, spage * SPER).map((r) => (
               <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
                 <td className="py-2 px-3 font-semibold text-slate-800">{r.name}</td>
                 <td className="px-3">{companyPill(r.company)}</td>
@@ -2716,6 +2741,13 @@ function ShiftsWindow({ db, save, company = null }) {
             {list.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-400">{tr("لا نتائج")}</td></tr>}
           </tbody>
         </table></div>
+        {list.length > SPER && (
+          <div className="flex items-center justify-center gap-2 mt-3 text-sm">
+            <button disabled={spage <= 1} onClick={() => setSpage((p) => Math.max(1, p - 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("السابق", "Prev")}</button>
+            <span className="text-slate-500">{t("صفحة", "Page")} {Math.min(spage, Math.ceil(list.length / SPER))} / {Math.ceil(list.length / SPER)} · {list.length}</span>
+            <button disabled={spage >= Math.ceil(list.length / SPER)} onClick={() => setSpage((p) => Math.min(Math.ceil(list.length / SPER), p + 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("التالي", "Next")}</button>
+          </div>
+        )}
       </Card>
 
       <Modal open={!!editing} onClose={() => setEditing(null)} title={editing ? tr("شفت — ") + editing.name : ""}>
@@ -3018,6 +3050,7 @@ function RegistrationModule({ db, save, user, onRefresh }) {
   const [sel, setSel] = useState(null);
   const [q, setQ] = useState("");
   const [statusF, setStatusF] = useState("all");
+  const [gpage, setGpage] = useState(1); const GPER = 50;
   const [assigneeF, setAssigneeF] = useState("all");
   const [areaF, setAreaF] = useState("all");
   const [dateF, setDateF] = useState("");
@@ -3136,7 +3169,7 @@ function RegistrationModule({ db, save, user, onRefresh }) {
         <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("المندوب", "Driver"), t("الهاتف", "Phone"), t("المنطقة", "Area"), t("البطاقة", "ID"), t("الموظف", "Assignee"), t("الحالة", "Status"), t("التقدّم", "Progress"), ""].map((h) => <th key={h} className="py-3 px-3 font-semibold">{h}</th>)}</tr></thead>
           <tbody>
-            {rows.map((r) => { const st = regStatus(r); return (
+            {rows.slice((gpage - 1) * GPER, gpage * GPER).map((r) => { const st = regStatus(r); return (
               <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
                 <td className="py-3 px-3 font-semibold text-slate-800">{r.fullName}</td>
                 <td className="px-3 text-slate-600" dir="ltr">{r.phone}</td>
@@ -3151,6 +3184,13 @@ function RegistrationModule({ db, save, user, onRefresh }) {
             {rows.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">{t("لا توجد طلبات", "No requests")}</td></tr>}
           </tbody>
         </table></div>
+        {rows.length > GPER && (
+          <div className="flex items-center justify-center gap-2 mt-3 text-sm">
+            <button disabled={gpage <= 1} onClick={() => setGpage((p) => Math.max(1, p - 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("السابق", "Prev")}</button>
+            <span className="text-slate-500">{t("صفحة", "Page")} {Math.min(gpage, Math.ceil(rows.length / GPER))} / {Math.ceil(rows.length / GPER)} · {rows.length}</span>
+            <button disabled={gpage >= Math.ceil(rows.length / GPER)} onClick={() => setGpage((p) => Math.min(Math.ceil(rows.length / GPER), p + 1))} className="px-3 py-1 rounded-lg border border-slate-200 disabled:opacity-40">{t("التالي", "Next")}</button>
+          </div>
+        )}
       </Card>
 
       <Modal open={!!sel} onClose={() => setSel(null)} title={sel ? sel.fullName : ""} wide>
