@@ -553,7 +553,20 @@ function makeAgentPicker(db, company) {
   db.riders.filter((r) => r.company === company && counts[r.codAgent] !== undefined).forEach((r) => counts[r.codAgent]++);
   return () => { if (!agents.length) return ""; const a = agents.reduce((b, x) => (counts[x] < counts[b] ? x : b), agents[0]); counts[a]++; return a; };
 }
+const _moneyCache = new WeakMap();
 function riderMoney(db, riderId) {
+  // تخزين مؤقت: تُحسب مرة واحدة لكل نسخة بيانات (تسريع كبير عند الكتابة/البحث)
+  if (db && typeof db === "object") {
+    let m = _moneyCache.get(db);
+    if (!m) { m = new Map(); _moneyCache.set(db, m); }
+    if (m.has(riderId)) return m.get(riderId);
+    const r = _computeRiderMoney(db, riderId);
+    m.set(riderId, r);
+    return r;
+  }
+  return _computeRiderMoney(db, riderId);
+}
+function _computeRiderMoney(db, riderId) {
   const rider = db.riders.find((r) => r.id === riderId);
   const rows = db.imports.flatMap((i) => i.results).filter((r) => r.riderId === riderId);
   const orders = rows.reduce((a, r) => a + (r.orders || 0), 0);
@@ -582,7 +595,7 @@ function riderMoney(db, riderId) {
 /* ============================================================
    Excel importer (per company)
    ============================================================ */
-function ExcelImporter({ company, riders, onApply, onAddRider }) {
+function ExcelImporter({ company, riders, onApply, onAddRider, onActivate }) {
   const [sheetDate, setSheetDate] = useState(todayStr());
   const [headers, setHeaders] = useState(null);
   const [rows, setRows] = useState([]);
@@ -672,6 +685,7 @@ function ExcelImporter({ company, riders, onApply, onAddRider }) {
       {headers && (
         <div className="mt-5 border-t border-slate-100 pt-4">
           {(() => { const unm = rows.filter((r) => !matchRider(r)).length; return unm > 0 ? <div className="mb-3 p-3 rounded-lg text-sm" style={{ background: "#fff7ed", color: "#9a3412" }}>⚠️ {t("يوجد", "There are")} <b>{unm}</b> {t("مندوب في الشيت غير مسجّلين لديك. اضغط \"تسجيل الآن\" بجانب كل واحد لتسجيله فوراً، وستظهر طلباته مباشرة.", "rider(s) in the sheet not registered. Click \"Register now\" next to each to add them instantly; their orders will attach immediately.")}</div> : null; })()}
+          {(() => { const inact = rows.map((r) => matchRider(r)).filter((rd) => rd && rd.status !== "Active").length; return inact > 0 ? <div className="mb-3 p-3 rounded-lg text-sm" style={{ background: "#fef9c3", color: "#854d0e" }}>💤 {t("يوجد", "There are")} <b>{inact}</b> {t("مندوب في الشيت لكنهم معطّلون (غير نشطين). اضغط \"تفعيل\" بجانب كل واحد لتظهر طلباته.", "rider(s) in the sheet who are inactive. Click \"Activate\" next to each to show their orders.")}</div> : null; })()}
           <p className="text-xs text-slate-500 mb-3">{tr("طابق الأعمدة")} ({rows.length} {tr("صف")}):</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Field label={t("ID الشركة", "Company ID")}><select className={inputCls} value={map.id} onChange={(e) => setMap({ ...map, id: +e.target.value })}>{headers.map((h, i) => <option key={i} value={i}>{h || `${tr("عمود")} ${i + 1}`}</option>)}</select></Field>
@@ -698,7 +712,7 @@ function ExcelImporter({ company, riders, onApply, onAddRider }) {
                       <td className="px-2"><input type="number" step="0.001" className="w-24 rounded border border-slate-200 px-2 py-1" value={valOf(r, i, "cod")} onChange={(e) => setVal(i, "cod", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="0.5" className="w-16 rounded border px-2 py-1" style={{ borderColor: (rider && rider.type === "Full Time" && Number(valOf(r, i, "hours")) > 0 && Number(valOf(r, i, "hours")) < HOURS_MIN) ? "#c0341d" : "#e2e8f0", color: (rider && rider.type === "Full Time" && Number(valOf(r, i, "hours")) > 0 && Number(valOf(r, i, "hours")) < HOURS_MIN) ? "#c0341d" : "inherit" }} value={valOf(r, i, "hours")} onChange={(e) => setVal(i, "hours", e.target.value)} /></td>
                       <td className="px-2"><input type="number" step="1" className="w-16 rounded border px-2 py-1" style={{ borderColor: (rider && rider.type === "Full Time" && Number(valOf(r, i, "accept")) > 0 && Number(valOf(r, i, "accept")) < ACCEPT_MIN) ? "#c0341d" : "#e2e8f0", color: (rider && rider.type === "Full Time" && Number(valOf(r, i, "accept")) > 0 && Number(valOf(r, i, "accept")) < ACCEPT_MIN) ? "#c0341d" : "inherit" }} value={valOf(r, i, "accept")} onChange={(e) => setVal(i, "accept", e.target.value)} /></td>
-                      <td className="px-2">{rider ? <span style={{ color: "#0f9d58" }}>✓</span> : (onAddRider ? <button onClick={() => { const keyVal = String(r[map.key] || "").trim(); const idVal = String(r[map.id] || "").trim(); const isPhone = /^[0-9+\-\s]{6,}$/.test(keyVal); onAddRider({ name: isPhone ? (idVal || keyVal) : keyVal, phone: isPhone ? keyVal.replace(/\D/g, "") : "", companyId: idVal, company, type: "Freelancer", status: "Active", area: "", commission: "", bank: "", bankName: "", swift: "", joinDate: todayStr(), password: "1234", username: isPhone ? keyVal.replace(/\D/g, "") : keyVal }); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#0f9d5822", color: "#0f9d58" }}>+ {t("تسجيل الآن", "Register now")}</button> : <span style={{ color: "#c0341d" }}>{tr("غير مسجل")}</span>)}</td>
+                      <td className="px-2">{rider ? (rider.status !== "Active" ? <button onClick={() => onActivate && onActivate(rider.id)} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#fde68a", color: "#854d0e" }}>💤 {t("تفعيل", "Activate")}</button> : <span style={{ color: "#0f9d58" }}>✓</span>) : (onAddRider ? <button onClick={() => { const keyVal = String(r[map.key] || "").trim(); const idVal = String(r[map.id] || "").trim(); const isPhone = /^[0-9+\-\s]{6,}$/.test(keyVal); onAddRider({ name: isPhone ? (idVal || keyVal) : keyVal, phone: isPhone ? keyVal.replace(/\D/g, "") : "", companyId: idVal, company, type: "Freelancer", status: "Active", area: "", commission: "", bank: "", bankName: "", swift: "", joinDate: todayStr(), password: "1234", username: isPhone ? keyVal.replace(/\D/g, "") : keyVal }); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#0f9d5822", color: "#0f9d58" }}>+ {t("تسجيل الآن", "Register now")}</button> : <span style={{ color: "#c0341d" }}>{tr("غير مسجل")}</span>)}</td>
                     </tr>
                   );
                 })}
@@ -986,7 +1000,7 @@ function Riders({ db, save, company, user }) {
   const scoped = db.riders.filter((r) => (!company || r.company === company));
   const allAreas = Array.from(new Set(db.riders.map((r) => r.area).filter(Boolean))).sort();
   const areas = Array.from(new Set(scoped.map((r) => r.area).filter(Boolean))).sort();
-  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "", status: "Active", bank: "", bankName: "", swift: "", notes: "", username: "", password: "1234", codAgent: "" };
+  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "", status: "Active", bank: "", bankName: "", swift: "", notes: "", email: "", username: "", password: "1234", codAgent: "" };
   const list = scoped.filter((r) =>
     (company || cf === "all" || r.company === cf) &&
     (af === "all" || (r.area || "") === af) &&
@@ -1133,6 +1147,7 @@ function Riders({ db, save, company, user }) {
             <Field label={t("تاريخ الانضمام", "Join Date")}><input type="date" className={inputCls} value={editing.joinDate || ""} onChange={(e) => setEditing({ ...editing, joinDate: e.target.value })} /></Field>
             <Field label={t("تاريخ توقيع العقد", "Contract Sign Date")}><input type="date" className={inputCls} value={editing.contractDate || ""} onChange={(e) => setEditing({ ...editing, contractDate: e.target.value })} /></Field>
             {(!editing.id || (user && user.role === "Admin")) && <Field label={editing.id ? tr("كلمة مرور المندوب") : t("كلمة المرور الأولية", "Initial Password")}><input className={inputCls} value={editing.password} onChange={(e) => setEditing({ ...editing, password: e.target.value })} /></Field>}
+            <Field label={t("البريد الإلكتروني (للإشعارات)", "Email (for notifications)")}><input className={inputCls} dir="ltr" value={editing.email || ""} onChange={(e) => setEditing({ ...editing, email: e.target.value })} placeholder="rider@email.com" /></Field>
             <Field label={t("موظف التحويلات (COD)", "Transfers Agent (COD)")}><select className={inputCls} value={editing.codAgent || ""} onChange={(e) => setEditing({ ...editing, codAgent: e.target.value })}><option value="">{t("— غير محدد —", "— none —")}</option>{Object.entries({ ...STAFF_BY_EMAIL, ...(db.staff || {}) }).filter(([, p]) => p && p.codAgentPerm).map(([em, p]) => <option key={em} value={em}>{(p && p.name) || em}</option>)}</select></Field>
             {user && user.role === "Admin" && editing.id && <div className="col-span-2 p-3 rounded-lg" style={{ background: editing.bankLocked ? "#f0fdf4" : "#fef9c3" }}>
               <div className="flex items-center justify-between">
@@ -1226,7 +1241,7 @@ function OrdersTab({ company, db, save, user }) {
   return (
     <div className="space-y-5">
       <Card className="p-4 text-sm text-slate-600">{note}</Card>
-      <ExcelImporter company={company} riders={db.riders} onApply={onApply} onAddRider={(nr) => { const p = String(nr.phone || "").replace(/\D/g, ""); const c = String(nr.companyId || "").trim(); const exists = db.riders.some((x) => (p && String(x.phone).replace(/\D/g, "") === p) || (c && (x.companyId || "") === c)); if (exists) { alert(t("هذا المندوب مسجّل بالفعل", "This rider already exists")); return; } const pick = makeAgentPicker(db, company); save({ ...db, riders: [...db.riders, { ...nr, id: uid(), lastWorked: null, codAgent: nr.codAgent || pick() }] }); }} />
+      <ExcelImporter company={company} riders={db.riders} onActivate={(rid) => save({ ...db, riders: db.riders.map((r) => (r.id === rid ? { ...r, status: "Active" } : r)) })} onApply={onApply} onAddRider={(nr) => { const p = String(nr.phone || "").replace(/\D/g, ""); const c = String(nr.companyId || "").trim(); const exists = db.riders.some((x) => (p && String(x.phone).replace(/\D/g, "") === p) || (c && (x.companyId || "") === c)); if (exists) { alert(t("هذا المندوب مسجّل بالفعل", "This rider already exists")); return; } const pick = makeAgentPicker(db, company); save({ ...db, riders: [...db.riders, { ...nr, id: uid(), lastWorked: null, codAgent: nr.codAgent || pick() }] }); }} />
 
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل الطلبات والمبالغ", "Orders & Amounts History")}</h3>
@@ -2074,10 +2089,10 @@ function DuesTab({ company, db, save, user }) {
   const delPayout = (pid) => { if (window.confirm(tr("حذف هذه الدفعة؟"))) save({ ...db, payouts: (db.payouts || []).filter((p) => p.id !== pid) }); };
   const dlPayoutTemplate = () => {
     const rs = db.riders.filter((r) => r.company === company && r.status === "Active");
-    const header = ["الايدي / ID", "الهاتف / Phone", "الاسم / Name", "المتبقي / Remaining", "المبلغ المدفوع / Paid Amount", "ملاحظة / Note"];
-    const body = rs.map((r) => { const m = riderMoney(db, r.id); return [r.companyId || "", r.phone, r.name, m.duesRemaining, "", ""]; });
+    const header = ["الايدي / ID", "الهاتف / Phone", "الاسم / Name", "البريد / Email", "المتبقي / Remaining", "المبلغ المدفوع / Paid Amount", "ملاحظة / Note", "إرسال إيميل؟ (نعم) / Send"];
+    const body = rs.map((r) => { const m = riderMoney(db, r.id); return [r.companyId || "", r.phone, r.name, r.email || "", m.duesRemaining, "", "", ""]; });
     const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-    ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 20 }];
+    ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 24 }, { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 16 }];
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "payouts");
     XLSX.writeFile(wb, "Payouts-" + company + "-" + todayStr() + ".xlsx");
   };
@@ -2087,17 +2102,26 @@ function DuesTab({ company, db, save, user }) {
       try {
         const wb = XLSX.read(ev.target.result, { type: "binary" });
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
-        const recs = []; let skipped = 0;
+        const recs = []; let skipped = 0; const toEmail = [];
         for (let i = 1; i < rows.length; i++) {
           const r = rows[i]; if (!r) continue;
-          const idVal = String(r[0] || "").trim(), phoneVal = String(r[1] || "").replace(/\D/g, ""), amt = Number(r[4]) || 0, note = String(r[5] || "").trim();
+          const idVal = String(r[0] || "").trim(), phoneVal = String(r[1] || "").replace(/\D/g, ""), emailCol = String(r[3] || "").trim(), amt = Number(r[4]) || 0, note = String(r[6] || "").trim(), sendCol = String(r[7] || "").trim().toLowerCase();
           if (amt <= 0) continue;
           const rider = db.riders.find((x) => x.company === company && ((idVal && (x.companyId || "") === idVal) || (phoneVal && String(x.phone).replace(/\D/g, "") === phoneVal)));
           if (!rider) { skipped++; continue; }
           recs.push({ id: uid(), riderId: rider.id, amount: amt, note: note || t("دفعة جماعية", "bulk payout"), by: (user && (user.name || user.email)) || "", at: new Date().toISOString().slice(0, 16).replace("T", " ") });
+          const wantSend = ["نعم", "yes", "y", "1", "true", "send", "ok", "✓"].includes(sendCol);
+          const em = emailCol || rider.email || "";
+          if (wantSend && em) toEmail.push({ to: em, name: rider.name, amount: amt.toFixed(3), company });
         }
         if (recs.length) save({ ...db, payouts: [...(db.payouts || []), ...recs] });
-        alert(t("تم تسجيل " + recs.length + " دفعة." + (skipped ? " تم تخطّي " + skipped + " صف (مندوب غير معروف أو بدون مبلغ)." : ""), "Recorded " + recs.length + " payment(s)." + (skipped ? " Skipped " + skipped + " row(s)." : "")));
+        // إرسال الإيميلات (للصفوف المطلوب إرسالها)
+        let sent = 0, failed = 0;
+        if (toEmail.length) {
+          Promise.allSettled(toEmail.map((e) => supabase.functions.invoke("send-payout-email", { body: e }).then(({ data, error }) => { if (error || (data && data.error)) throw (error || data.error); sent++; }).catch(() => { failed++; })))
+            .then(() => { alert(t("تم إرسال " + sent + " إيميل" + (failed ? " • فشل " + failed : ""), "Sent " + sent + " email(s)" + (failed ? " • failed " + failed : ""))); });
+        }
+        alert(t("تم تسجيل " + recs.length + " دفعة." + (skipped ? " تم تخطّي " + skipped + " صف (مندوب غير معروف أو بدون مبلغ)." : "") + (toEmail.length ? " • جارٍ إرسال " + toEmail.length + " إيميل..." : ""), "Recorded " + recs.length + " payment(s)." + (skipped ? " Skipped " + skipped + " row(s)." : "") + (toEmail.length ? " • Sending " + toEmail.length + " email(s)..." : "")));
       } catch (e) { alert(t("تعذّرت قراءة الملف", "Could not read the file")); }
     };
     reader.readAsBinaryString(file);
@@ -3037,7 +3061,7 @@ function RegistrationModule({ db, save, user, onRefresh }) {
       id: uid(), name: r.fullName, phone: r.phone, companyId: r.driverId || "", civil: r.idNumber || "", area: r.wilaya || "",
       commission: "", company: r.company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "",
       status: "Active", bank: r.bank || "", bankName: r.bankName || "", swift: r.swift || "", nationality: r.nationality || "", vehicleType: r.vehicleType || "",
-      notes: r.notes || "", username: r.username || r.phone, password: r.password || "1234", lastWorked: null,
+      email: r.email || "", notes: r.notes || "", username: r.username || r.phone, password: r.password || "1234", lastWorked: null,
     };
     const pickRA = makeAgentPicker(db, rider.company); const riderA = { ...rider, codAgent: rider.codAgent || pickRA() };
     // تحديث محلي فوري + كتابة موجّهة ذرّية (تتفادى فشل حفظ كل البيانات)
