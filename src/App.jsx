@@ -367,6 +367,8 @@ const omr = (n) => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDig
 const daysSince = (d) => (!d ? Infinity : Math.floor((Date.now() - new Date(d).getTime()) / 86400000));
 const normPhone = (v) => String(v || "").replace(/[^0-9]/g, "").replace(/^968/, "").replace(/^0+/, "");
 const normType = (v, def) => { const s = String(v || "").trim().toLowerCase(); if (!s) return def; if (s.includes("free") || s.includes(tr("فري"))) return "Freelancer"; if (s.includes("full") || s.includes(tr("فول")) || s.includes(tr("ثابت")) || s.includes(tr("دوام"))) return "Full Time"; return def; };
+// تصنيف الجنسية من نص حرّ: عماني / أجنبي / غير محدد (للفارغ)
+const natClass = (v) => { const s = String(v || "").trim().toLowerCase(); if (!s) return "unknown"; if (s.includes("عمان") || s.includes("عُمان") || s === "om" || s === "omn" || s.includes("oman") || s.includes("omani")) return "omani"; return "foreign"; };
 const lastDays = (n) => { const a = []; for (let i = 0; i < n; i++) { const d = new Date(); d.setDate(d.getDate() - i); a.push(d.toISOString().slice(0, 10)); } return a; };
 
 /* earnings owed to a rider (company pays rider), based on TOTAL monthly orders */
@@ -995,15 +997,16 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
 }
 
 function Riders({ db, save, company, user }) {
-  const [q, setQ] = useState(""); const [cf, setCf] = useState("all"); const [af, setAf] = useState("all");
+  const [q, setQ] = useState(""); const [cf, setCf] = useState("all"); const [af, setAf] = useState("all"); const [natf, setNatf] = useState("all");
   const [editing, setEditing] = useState(null); const [bulk, setBulk] = useState(false);
   const scoped = db.riders.filter((r) => (!company || r.company === company));
   const allAreas = Array.from(new Set(db.riders.map((r) => r.area).filter(Boolean))).sort();
   const areas = Array.from(new Set(scoped.map((r) => r.area).filter(Boolean))).sort();
-  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "", status: "Active", bank: "", bankName: "", swift: "", notes: "", email: "", username: "", password: "1234", codAgent: "" };
+  const blank = { name: "", phone: "", companyId: "", civil: "", area: "", commission: "", company: company || "Talabat", type: "Freelancer", joinDate: todayStr(), contractDate: "", status: "Active", bank: "", bankName: "", swift: "", notes: "", email: "", username: "", password: "1234", codAgent: "", nationality: "" };
   const list = scoped.filter((r) =>
     (company || cf === "all" || r.company === cf) &&
     (af === "all" || (r.area || "") === af) &&
+    (natf === "all" || natClass(r.nationality) === natf) &&
     (r.name.includes(q) || r.phone.includes(q) || (r.companyId || "").includes(q) || (r.civil || "").includes(q) || (r.area || "").includes(q)));
   const isAdmin = user && (user.role === "Admin" || user.role === "Operations Manager");
   const [resetOpen, setResetOpen] = useState(false);
@@ -1070,6 +1073,7 @@ function Riders({ db, save, company, user }) {
             <input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={t("بحث: اسم / رقم / ID / منطقة", "Search: name / phone / ID / area")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           {!company && <select className={inputCls + " w-32"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">{tr("كل الشركات")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>}
           <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">{tr("كل المناطق")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
+          <select className={inputCls + " w-32"} value={natf} onChange={(e) => setNatf(e.target.value)}><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
         </div>
         <div className="flex gap-2">
           <Btn kind="ghost" onClick={() => exportExcel(list.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الهاتف: r.phone, ID: r.companyId || "", الشركة: cLabel(r.company), النوع: r.type, المنطقة: r.area || "", الكوميشن: r.commission || "", البنك: r.bankName || "", رقم_الحساب: r.bank || "", سويفت: r.swift || "", الطلبات: m.orders, "COD_المتبقي": m.owed, المستحق: m.earn, الحالة: r.status }; }), "Riders_" + (company || "All"))}><Download size={16} /> {t("تصدير Excel", "Export Excel")} ({list.length})</Btn>
@@ -1144,7 +1148,7 @@ function Riders({ db, save, company, user }) {
             <Field label={tr("رقم الهاتف")}><input className={inputCls} dir="ltr" value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></Field>
             <Field label={tr("رقم المدني")}><input className={inputCls} dir="ltr" value={editing.civil || ""} onChange={(e) => setEditing({ ...editing, civil: e.target.value })} /></Field>
             <Field label={t("ID المندوب في الشركة", "Company Rider ID")}><input className={inputCls} dir="ltr" value={editing.companyId || ""} onChange={(e) => setEditing({ ...editing, companyId: e.target.value })} placeholder={t("مُعرّف المندوب من الشركة", "rider id from company")} /></Field>
-            <Field label={tr("المنطقة / المحافظة")}><select className={inputCls} value={editing.area || ""} onChange={(e) => setEditing({ ...editing, area: e.target.value })}><option value="">{t("— اختر المنطقة —", "— select area —")}</option>{(db.areas || []).map((a) => <option key={a} value={a}>{a}</option>)}{editing.area && !(db.areas || []).includes(editing.area) && <option value={editing.area}>{editing.area}</option>}</select></Field>
+            <Field label={t("الجنسية", "Nationality")}><select className={inputCls} value={natClass(editing.nationality)} onChange={(e) => setEditing({ ...editing, nationality: e.target.value === "omani" ? "عماني" : e.target.value === "foreign" ? (natClass(editing.nationality) === "foreign" ? editing.nationality : "أجنبي") : "" })}><option value="unknown">{t("— غير محدد —", "— unspecified —")}</option><option value="omani">{t("عماني", "Omani")}</option><option value="foreign">{t("أجنبي", "Foreign")}</option></select></Field>
             <Field label={t("الكوميشن للطلب (فريلانسر)", "Commission per order (Freelancer)")}><input className={inputCls} dir="ltr" type="number" step="0.001" value={editing.commission || ""} onChange={(e) => setEditing({ ...editing, commission: e.target.value })} placeholder={t("مثال 1.400", "e.g. 1.400")} /></Field>
             <Field label={t("اسم البنك", "Bank Name")}><select className={inputCls} value={editing.bankName || ""} onChange={(e) => { const b = allBanks(db).find((x) => x.name === e.target.value); setEditing({ ...editing, bankName: e.target.value, swift: b ? b.swift : "" }); }}><option value="">{t("— اختر البنك —", "— select bank —")}</option>{allBanks(db).map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}</select></Field>
             <Field label={t("رقم الحساب البنكي", "Bank Account No.")}><input className={inputCls} dir="ltr" value={editing.bank} onChange={(e) => setEditing({ ...editing, bank: e.target.value })} /></Field>
@@ -1388,6 +1392,8 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const [page, setPage] = useState(1);
   const [qT, setQT] = useState("");
   const [agentFT, setAgentFT] = useState("all");
+  const [typeFT, setTypeFT] = useState("all"); // فلتر النوع لجدول التحويلات
+  const [natFT, setNatFT] = useState("all"); // فلتر الجنسية لجدول التحويلات
   const PER = 25;
   const [viewReceipt, setViewReceipt] = useState(null);
   const myEmail = (user && user.email) || "";
@@ -1398,7 +1404,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const canControl = (riderId) => { const r = db.riders.find((x) => x.id === riderId); return isAdminU || (r && r.codAgent && r.codAgent.toLowerCase() === myEmail.toLowerCase()); }; // فقط المسؤول (أو الأدمن) يتحكم
   const agentName = (riderId) => { const r = db.riders.find((x) => x.id === riderId); if (!r || !r.codAgent) return "—"; const s = { ...STAFF_BY_EMAIL, ...(db.staff || {}) }[r.codAgent]; return (s && s.name) || r.codAgent; };
   const listAll = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
-  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : (rr.codAgent || "").toLowerCase() === agentFT.toLowerCase()); return agOk && (!qq || (rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || (rr.companyId || "").toLowerCase().includes(qq) || (t.reference || "").toLowerCase().includes(qq)); });
+  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : (rr.codAgent || "").toLowerCase() === agentFT.toLowerCase()); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; return agOk && typeOk && natOk && (!qq || (rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || (rr.companyId || "").toLowerCase().includes(qq) || (t.reference || "").toLowerCase().includes(qq)); });
   const totalPages = Math.max(1, Math.ceil(list.length / PER));
   const pageList = list.slice((page - 1) * PER, page * PER);
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
@@ -1494,6 +1500,8 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const [q, setQ] = useState("");
   const [statusF, setStatusF] = useState("all");
   const [agentF, setAgentF] = useState("all");
+  const [typeDue, setTypeDue] = useState("all"); // فلتر النوع لجدول المستحقات
+  const [natDue, setNatDue] = useState("all"); // فلتر الجنسية لجدول المستحقات
   // نظرة عامة لكل مندوب: كم عليه COD وهل حوّل
   const rdrs = visibleRiders.filter((r) => r.status === "Active");
   const dueRows = rdrs.map((r) => {
@@ -1508,7 +1516,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     else { key = "pending"; label = t("لم يحوّل (Pending)", "Not transferred (Pending)"); color = "#d97706"; }
     return { r, m, key, label, color, hasPending };
   }).filter((x) => x.m.codToTransfer > 0.001);
-  const shownDue = dueRows.filter((x) => (statusF === "all" || x.key === statusF) && (agentF === "all" || (agentF === "none" ? !x.r.codAgent : (x.r.codAgent || "").toLowerCase() === agentF.toLowerCase())) && (x.r.name.includes(q) || (x.r.phone || "").includes(q) || (x.r.companyId || "").includes(q)));
+  const shownDue = dueRows.filter((x) => (typeDue === "all" || x.r.type === typeDue) && (natDue === "all" || natClass(x.r.nationality) === natDue) && (statusF === "all" || x.key === statusF) && (agentF === "all" || (agentF === "none" ? !x.r.codAgent : (x.r.codAgent || "").toLowerCase() === agentF.toLowerCase())) && (x.r.name.includes(q) || (x.r.phone || "").includes(q) || (x.r.companyId || "").includes(q)));
   return (
     <div className="space-y-4">
       <Card className="p-5">
@@ -1520,6 +1528,8 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-44" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
             <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All")}</option><option value="pending">{t("لم يحوّل", "Not transferred")}</option><option value="review">{tr("قيد المراجعة")}</option><option value="approved">{tr("قبول يدوي")}</option><option value="rejected">{tr("رفض يدوي")}</option></select>
             <select value={agentF} onChange={(e) => setAgentF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
+            <select value={typeDue} onChange={(e) => setTypeDue(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
+            <select value={natDue} onChange={(e) => setNatDue(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
             <Btn kind="ghost" size="sm" onClick={() => exportExcel(shownDue.map((x) => ({ المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": x.m.codToTransfer, المحوّل: x.m.transferred, المتبقي: x.m.owed, الحالة: x.label })), "COD_Dues_" + company)}><Download size={14} /> Excel ({shownDue.length})</Btn>
           </div>
         </div>
@@ -1552,6 +1562,8 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
           <div className="flex gap-2 flex-wrap">
             <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={t("بحث: اسم / هاتف / ID / رقم مرجعي", "name / phone / ID / reference")} value={qT} onChange={(e) => { setQT(e.target.value); setPage(1); }} /></div>
             <select value={agentFT} onChange={(e) => { setAgentFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
+            <select value={typeFT} onChange={(e) => { setTypeFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
+            <select value={natFT} onChange={(e) => { setNatFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
           </div>
           <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
