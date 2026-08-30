@@ -1025,18 +1025,21 @@ function Riders({ db, save, company, user }) {
     setResetOpen(false); setResetWord("");
   };
   const normP = (x) => String(x || "").replace(/\D/g, "");
-  const dupRider = (phone, civil, exceptId) => {
+  const dupRider = (phone, civil, exceptId, isEdit) => {
     const p = normP(phone), c = String(civil || "").trim();
     const inRiders = db.riders.find((x) => x.id !== exceptId && ((p && normP(x.phone) === p) || (c && String(x.civil || "").trim() === c)));
     if (inRiders) return { where: t("المناديب", "riders"), name: inRiders.name };
-    const inReg = (db.registrations || []).find((x) => !x.rejected && ((p && normP(x.phone) === p) || (c && String(x.idNumber || "").trim() === c)));
+    // عند تعديل مندوب موجود لا نفحص طلبات التسجيل (المهم فقط عدم التكرار مع مندوب آخر، وقد فُحص أعلاه)
+    if (isEdit) return null;
+    // عند الإضافة: نتجاهل طلبات التسجيل المرفوضة أو التي تم تحويلها لمندوب فعلاً
+    const inReg = (db.registrations || []).find((x) => !x.rejected && !x.converted && ((p && normP(x.phone) === p) || (c && String(x.idNumber || "").trim() === c)));
     if (inReg) return { where: t("طلبات التسجيل", "registration"), name: inReg.fullName };
     return null;
   };
   const submit = () => {
     const r = { ...editing };
     if (!r.name || !r.phone) return alert(tr("الاسم ورقم الهاتف مطلوبان"));
-    const dup = dupRider(r.phone, r.civil, r.id);
+    const dup = dupRider(r.phone, r.civil, r.id, !!r.id);
     if (dup) return alert(t("مندوب مسجّل سابقاً بنفس الهاتف أو الرقم المدني (" + dup.name + " — في " + dup.where + "). لا يمكن التكرار.", "Already registered with same phone or civil ID (" + dup.name + " — in " + dup.where + "). Duplicate not allowed."));
     // القاعدة ٢: منع تكرار ID التطبيق (companyId) حتى لو اختلف الهاتف/المدني
     const cid = String(r.companyId || "").trim();
