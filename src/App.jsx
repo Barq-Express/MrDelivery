@@ -536,7 +536,18 @@ function StatCard({ icon, label, value, accent = BRAND.navy, sub }) {
   );
 }
 function exportExcel(rows, name) {
-  const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ [tr("لا بيانات")]: "" }]);
+  // تنظيف: أي قيمة نصية تبدو رقماً تُحوّل لرقم فعلي (تفادي دمج النصوص)، والأرقام تُقرّب لـ3 خانات
+  const clean = (rows.length ? rows : [{ [tr("لا بيانات")]: "" }]).map((row) => {
+    const out = {};
+    Object.keys(row).forEach((k) => {
+      const v = row[k];
+      if (typeof v === "number") { out[k] = Math.round(v * 1000) / 1000; }
+      else if (typeof v === "string" && v.trim() !== "" && /^-?\d+(\.\d+)?$/.test(v.trim())) { out[k] = Math.round(Number(v.trim()) * 1000) / 1000; }
+      else { out[k] = v; }
+    });
+    return out;
+  });
+  const ws = XLSX.utils.json_to_sheet(clean);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Report");
   XLSX.writeFile(wb, `${name}.xlsx`);
@@ -576,9 +587,9 @@ function _computeRiderMoney(db, riderId) {
   const hoursCapped = rows.reduce((a, r) => a + Math.min(Number(r.hours) || 0, HOURS_CAP), 0); // بحد أقصى 8/يوم
   const hours = hoursCapped;                                                        // المحسوبة للراتب
   const codAdj = (db.codAdjustments || []).filter((a) => a.riderId === riderId && a.status === "approved").reduce((s, a) => s + (Number(a.delta) || 0), 0);
-  const codToTransfer = rows.reduce((a, r) => a + (r.transferDue || 0), 0) + codAdj;
-  const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved").reduce((a, t) => a + t.amount, 0);
-  const deducted = db.transfers.filter((t) => t.riderId === riderId && t.status !== "Rejected").reduce((a, t) => a + t.amount, 0); // المُرسل (قيد المراجعة + المعتمد) — يُخصم فوراً
+  const codToTransfer = rows.reduce((a, r) => a + (Number(r.transferDue) || 0), 0) + codAdj;
+  const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved").reduce((a, t) => a + (Number(t.amount) || 0), 0);
+  const deducted = db.transfers.filter((t) => t.riderId === riderId && t.status !== "Rejected").reduce((a, t) => a + (Number(t.amount) || 0), 0); // المُرسل (قيد المراجعة + المعتمد) — يُخصم فوراً
   let earn = 0;
   if (rider) {
     if (rider.type === "Freelancer") {
@@ -591,7 +602,8 @@ function _computeRiderMoney(db, riderId) {
   }
   const hoursPay = rider && rider.type === "Full Time" ? earn : hoursCapped * HOUR_RATE;
   const paidDues = (db.payouts || []).filter((p) => p.riderId === riderId).reduce((a, p) => a + (Number(p.amount) || 0), 0);
-  return { orders, hours, hoursRaw, hoursCapped, hoursPay, codToTransfer, transferred, deducted, owed: codToTransfer - deducted, pendingAmt: deducted - transferred, earn, paidDues, duesRemaining: earn - paidDues };
+  const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000; // تقريب لـ3 خانات (إزالة فروق الفلوت)
+  return { orders, hours, hoursRaw, hoursCapped, hoursPay: r3(hoursPay), codToTransfer: r3(codToTransfer), transferred: r3(transferred), deducted: r3(deducted), owed: r3(codToTransfer - deducted), pendingAmt: r3(deducted - transferred), earn: r3(earn), paidDues: r3(paidDues), duesRemaining: r3(earn - paidDues) };
 }
 
 /* ============================================================
@@ -1533,11 +1545,11 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             <select value={agentF} onChange={(e) => setAgentF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
             <select value={typeDue} onChange={(e) => setTypeDue(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
             <select value={natDue} onChange={(e) => setNatDue(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
-            <Btn kind="ghost" size="sm" onClick={() => exportExcel(shownDue.map((x) => ({ المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": x.m.codToTransfer, المحوّل: x.m.transferred, المتبقي: x.m.owed, الحالة: x.label })), "COD_Dues_" + company)}><Download size={14} /> Excel ({shownDue.length})</Btn>
+            <Btn kind="ghost" size="sm" onClick={() => { const STAR = { review: "قيد المراجعة", approved: "تم التحويل", rejected: "مرفوض", pending: "لم يحوّل" }; exportExcel(shownDue.map((x) => { const r3 = (n) => { const v = Math.round((Number(n) || 0) * 1000) / 1000; return Math.abs(v) < 0.01 ? 0 : v; }; return { المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": r3(x.m.codToTransfer), المحوّل_المعتمد: r3(x.m.transferred), قيد_المراجعة: r3(x.m.pendingAmt), المتبقي: r3(x.m.owed), الحالة: STAR[x.key] || x.label }; }), "COD_Dues_" + company); }}><Download size={14} /> Excel ({shownDue.length})</Btn>
           </div>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), "ID", t("الموظف المسؤول", "Agent"), t("COD الكلي", "Total COD"), t("المحوّل", "Transferred"), t("المتبقي", "Remaining"), t("الحالة", "Status"), t("تعديل", "Adjust")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("المندوب"), "ID", t("الموظف المسؤول", "Agent"), t("COD الكلي", "Total COD"), t("المحوّل", "Transferred"), t("قيد المراجعة", "Under review"), t("المتبقي", "Remaining"), t("الحالة", "Status"), t("تعديل", "Adjust")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
           <tbody>
             {shownDue.map((x) => (
               <tr key={x.r.id} className="border-b border-slate-50 hover:bg-slate-50">
@@ -1546,6 +1558,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
                 <td className="px-3 text-slate-500">{agentName(x.r.id)}</td>
                 <td className="px-3">{omr(x.m.codToTransfer)}</td>
                 <td className="px-3 text-slate-500">{omr(x.m.transferred)}</td>
+                <td className="px-3" style={{ color: x.m.pendingAmt > 0.001 ? "#d97706" : "#94a3b8" }}>{omr(x.m.pendingAmt)}</td>
                 <td className="px-3 font-bold" style={{ color: x.m.owed > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(x.m.owed)}</td>
                 <td className="px-3"><Pill color={x.color}>{x.label}</Pill></td>
                 <td className="px-3"><div className="flex gap-1 items-center">
@@ -2477,7 +2490,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("سجل العمل", "Work History")}</h3>
         {(() => {
           const hist = db.imports
-            .map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { date: im.date, orders: rr.orders || 0, cod: rr.cod || 0, hours: Number(rr.hours) || 0, accept: pctAccept(rr.accept) } : null; })
+            .map((im) => { const rr = im.results.find((x) => x.riderId === riderId); return rr ? { date: im.date, orders: rr.orders || 0, cod: (rr.transferDue != null ? rr.transferDue : rr.cod) || 0, hours: Number(rr.hours) || 0, accept: pctAccept(rr.accept) } : null; })
             .filter(Boolean)
             .sort((a, b) => (a.date < b.date ? 1 : -1));
           const ftDays = hist.filter((h) => h.hours > 0 || h.accept > 0);
@@ -2512,7 +2525,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         {(() => {
           const isFT = rider.type === "Full Time";
           const byMonth = {};
-          db.imports.forEach((im) => { const rr = im.results.find((x) => x.riderId === riderId); if (!rr) return; const mo = (im.date || "").slice(0, 7); if (!byMonth[mo]) byMonth[mo] = { orders: 0, cod: 0, hours: 0, accSum: 0, accCnt: 0 }; byMonth[mo].orders += rr.orders || 0; byMonth[mo].cod += rr.cod || 0; byMonth[mo].hours += Math.min(Number(rr.hours) || 0, HOURS_CAP); if (pctAccept(rr.accept) > 0) { byMonth[mo].accSum += pctAccept(rr.accept); byMonth[mo].accCnt += 1; } });
+          db.imports.forEach((im) => { const rr = im.results.find((x) => x.riderId === riderId); if (!rr) return; const mo = (im.date || "").slice(0, 7); if (!byMonth[mo]) byMonth[mo] = { orders: 0, cod: 0, hours: 0, accSum: 0, accCnt: 0 }; byMonth[mo].orders += rr.orders || 0; byMonth[mo].cod += (rr.transferDue != null ? rr.transferDue : rr.cod) || 0; byMonth[mo].hours += Math.min(Number(rr.hours) || 0, HOURS_CAP); if (pctAccept(rr.accept) > 0) { byMonth[mo].accSum += pctAccept(rr.accept); byMonth[mo].accCnt += 1; } });
           const months = Object.keys(byMonth).sort().reverse();
           if (months.length === 0) return null;
           return (
@@ -2528,7 +2541,20 @@ function RiderPortal({ db, riderId, creds, refresh }) {
                     {isFT && <td className="px-3">{v.hours}{v.hours >= FULL_MONTH_HOURS ? <span className="text-[10px] text-green-600"> ✓ {t("راتب كامل", "full")}</span> : ""}</td>}
                     {isFT && <td className="px-3" style={{ color: avg > 0 && avg < ACCEPT_MIN ? "#c0341d" : "inherit" }}>{avg ? avg + "%" : "—"}</td>}
                   </tr>
-                ); })}</tbody>
+                ); })}
+                {(() => { const codAdj = (db.codAdjustments || []).filter((a) => a.riderId === riderId && a.status === "approved").reduce((s, a) => s + (Number(a.delta) || 0), 0); return Math.abs(codAdj) > 0.0005 ? (
+                  <tr className="border-b border-slate-50" style={{ background: "#fff7ed" }}>
+                    <td className="py-2 px-3 font-semibold" style={{ color: "#9a3412" }} colSpan={2}>{t("تعديلات يدوية على COD", "Manual COD adjustments")}</td>
+                    <td className="px-3 font-semibold" style={{ color: codAdj > 0 ? "#0f9d58" : "#c0341d" }}>{codAdj > 0 ? "+" : ""}{omr(codAdj)}</td>
+                    {isFT && <td className="px-3">—</td>}{isFT && <td className="px-3">—</td>}
+                  </tr>
+                ) : null; })()}
+                <tr className="font-bold bg-slate-50">
+                  <td className="py-2 px-3">{t("الإجمالي", "Total")}</td>
+                  <td className="px-3">{m.orders}</td>
+                  <td className="px-3">{omr(m.codToTransfer)}</td>
+                  {isFT && <td className="px-3">{m.hours}</td>}{isFT && <td className="px-3">—</td>}
+                </tr></tbody>
               </table></div>
             </div>
           );
