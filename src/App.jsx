@@ -1635,7 +1635,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
                   <td className="px-3">{tf.receipt ? <button onClick={() => setViewReceipt(tf)} className="text-slate-500 hover:text-slate-800"><Eye size={16} /></button> : "—"}</td>
                   <td className="px-3">
                     {tf.reconLabel ? <Pill color={tf.status === "Approved" ? "#0f9d58" : tf.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(tf.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}
-                    {tf.decidedBy && <div className="text-[10px] text-slate-400 mt-1">{t("بواسطة", "by")}: {tf.decidedBy}</div>}
+                    {(tf.status === "Approved" || tf.status === "Rejected") && tf.decidedBy ? <div className="text-[10px] text-slate-400 mt-1">{t("القرار بواسطة", "decided by")}: {tf.decidedBy}</div> : <div className="text-[10px] text-slate-400 mt-1">{t("المسؤول", "agent")}: {agentName(tf.riderId)}</div>}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1 items-center">
