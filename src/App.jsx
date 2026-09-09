@@ -422,7 +422,12 @@ function normalizeDB(db) {
     version: 3,
     riders: db.riders || SEED_RIDERS,
     imports: (db.imports || []).map((im) => ({ ...im, results: (im.results || []).map((r) => (r && r.accept != null && Number(r.accept) > 0 && Number(r.accept) <= 1 ? { ...r, accept: Math.round(Number(r.accept) * 100) } : r)) })),
-    transfers: db.transfers || [],
+    transfers: (db.transfers || []).map((t) => {
+      // التحويلات القديمة "بانتظار كشف البنك" (لم يُبَت فيها) تُعاد إلى "قيد المراجعة" ليتمكن الموظف من الموافقة/الرفض
+      const isAwaiting = t && (t.recon === "pending" || (t.reconLabel && String(t.reconLabel).includes("بانتظار")));
+      if (isAwaiting && t.status !== "Approved" && t.status !== "Rejected") { const { reconLabel, recon, ...rest } = t; return { ...rest, status: "Pending" }; }
+      return t;
+    }),
     payouts: db.payouts || [],
     bankRows: { Talabat: b.Talabat || [], Snoonu: b.Snoonu || [], Aramex: b.Aramex || [] },
     attendance: db.attendance || {},
