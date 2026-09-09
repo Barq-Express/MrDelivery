@@ -1602,10 +1602,16 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             <select value={agentFT} onChange={(e) => { setAgentFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
             <select value={typeFT} onChange={(e) => { setTypeFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
             <select value={natFT} onChange={(e) => { setNatFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
-            <select value={statusFT} onChange={(e) => { setStatusFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All statuses")}</option><option value="review">{t("قيد المراجعة", "Under review")}</option><option value="approved">{t("موافق", "Approved")}</option><option value="rejected">{t("مرفوض", "Rejected")}</option></select>
           </div>
           <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
+        {(() => { const cnt = (k) => listAll.filter((t) => { const rr = rInfo(t.riderId); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : (rr.codAgent || "").toLowerCase() === agentFT.toLowerCase()); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; return agOk && typeOk && natOk && (k === "all" || txStatus(t) === k); }).length; const tabs = [["all", t("الكل", "All"), "#0C1B33"], ["review", t("قيد المراجعة", "Under review"), "#d97706"], ["approved", t("موافق", "Approved"), "#0f9d58"], ["rejected", t("مرفوض", "Rejected"), "#c0341d"]]; return (
+          <div className="flex gap-2 flex-wrap mb-3 border-b border-slate-100 pb-3">
+            {tabs.map(([k, lbl, col]) => { const active = statusFT === k; return (
+              <button key={k} onClick={() => { setStatusFT(k); setPage(1); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition" style={active ? { background: col, color: "#fff", borderColor: col } : { background: "#fff", color: col, borderColor: col + "44" }}>{lbl} <span className="opacity-80">({cnt(k)})</span></button>
+            ); })}
+          </div>
+        ); })()}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">
