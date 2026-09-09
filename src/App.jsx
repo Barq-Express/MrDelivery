@@ -2931,6 +2931,16 @@ function Employees({ db, save, user }) {
     // عند التعطيل: أزل صلاحياته من التوزيع أيضاً
     save({ ...db, staff: { ...(db.staff || {}), [a.email]: { ...cur, disabled: willDisable, regAgent: willDisable ? false : cur.regAgent, codAgentPerm: willDisable ? false : cur.codAgentPerm } } });
   };
+  const changeRole = (a, newRole) => {
+    if (newRole === a.role) return;
+    const cur = (db.staff || {})[a.email] || { role: a.role, name: a.name, company: a.company };
+    const roleName = { Admin: t("مدير النظام", "System Admin"), "Operations Manager": t("مدير العمليات", "Operations Manager"), Finance: t("المالية", "Finance"), Supervisor: t("مشرف شركة", "Supervisor") }[newRole] || newRole;
+    if (!window.confirm(t("تغيير دور " + (a.name || a.email) + " إلى: " + roleName + "؟", "Change role of " + (a.name || a.email) + " to: " + roleName + "?"))) return;
+    const next = { ...cur, role: newRole };
+    if (newRole !== "Supervisor") next.company = null; // الشركة تخص المشرف فقط
+    else if (!next.company) next.company = "Talabat";
+    save({ ...db, staff: { ...(db.staff || {}), [a.email]: next } });
+  };
   const doReset = () => {
     if (!resetPw || resetPw.length < 6) return setResetMsg(t("كلمة مرور 6 خانات على الأقل", "Password must be 6+ characters"));
     setResetBusy(true); setResetMsg("");
@@ -2993,7 +3003,7 @@ function Employees({ db, save, user }) {
             <div key={a.email} className="flex items-center justify-between border-b border-slate-50 py-1.5 flex-wrap gap-2">
               <span dir="ltr" className="font-mono text-xs text-slate-700">{a.email}</span>
               <span className="flex items-center gap-2">
-                <Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}
+                {isAdmin && a.email !== "sulimanalhatmi.9669@gmail.com" ? <select value={a.role} onChange={(e) => changeRole(a, e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold" style={{ color: BRAND.blue }} title={t("تغيير الدور", "Change role")}><option value="Admin">{roleLabel("Admin")}</option><option value="Operations Manager">{roleLabel("Operations Manager")}</option><option value="Finance">{roleLabel("Finance")}</option><option value="Supervisor">{roleLabel("Supervisor")}</option></select> : <Pill color={BRAND.blue}>{roleLabel(a.role)}</Pill>}{a.company ? companyPill(a.company) : null}{a.regAgent ? <Pill color="#0f9d58">{t("متابع تسجيل", "Reg agent")}</Pill> : null}
                 {a.disabled ? <Pill color="#c0341d">{t("معطّل", "Disabled")}</Pill> : null}
                 {a.codAgentPerm ? <Pill color={BRAND.blue}>{t("متابع تحويلات", "Transfers agent")}</Pill> : null}
                 {isAdmin && <button onClick={() => toggleAgent(a)} className="text-xs font-semibold" style={{ color: a.regAgent ? "#c0341d" : "#0f9d58" }} title={t("تفعيل/إلغاء متابعة التسجيل", "Toggle registration follow-up")}>{a.regAgent ? t("إلغاء متابعة التسجيل", "Unset reg") : t("متابع تسجيل", "Reg agent")}</button>}
