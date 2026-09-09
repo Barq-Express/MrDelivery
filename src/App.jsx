@@ -1432,15 +1432,16 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const PER = 25;
   const [viewReceipt, setViewReceipt] = useState(null);
   const myEmail = (user && user.email) || "";
+  const nEmail = (e) => String(e || "").trim().toLowerCase(); // تطبيع موحّد للإيميل (يزيل المسافات وفروق الحروف)
   const isAdminU = user && user.role === "Admin";
   const visibleRiders = db.riders.filter((r) => r.company === company); // الجميع يشوف كل المناديب
   const rIds = new Set(visibleRiders.map((r) => r.id));
   const rInfo = (id) => db.riders.find((r) => r.id === id) || {};
-  const canControl = (riderId) => { const r = db.riders.find((x) => x.id === riderId); return isAdminU || (r && r.codAgent && r.codAgent.toLowerCase() === myEmail.toLowerCase()); }; // فقط المسؤول (أو الأدمن) يتحكم
-  const agentName = (riderId) => { const r = db.riders.find((x) => x.id === riderId); if (!r || !r.codAgent) return "—"; const s = { ...STAFF_BY_EMAIL, ...(db.staff || {}) }[r.codAgent]; return (s && s.name) || r.codAgent; };
+  const canControl = (riderId) => { const r = db.riders.find((x) => x.id === riderId); return isAdminU || (r && r.codAgent && nEmail(r.codAgent) === nEmail(myEmail)); }; // فقط المسؤول (أو الأدمن) يتحكم
+  const agentName = (riderId) => { const r = db.riders.find((x) => x.id === riderId); if (!r || !r.codAgent) return "—"; const map = { ...STAFF_BY_EMAIL, ...(db.staff || {}) }; const hit = Object.keys(map).find((k) => nEmail(k) === nEmail(r.codAgent)); return (hit && map[hit] && map[hit].name) || r.codAgent; };
   const listAll = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
   const txStatus = (t) => (t.status === "Approved" ? "approved" : t.status === "Rejected" ? "rejected" : "review"); // تصنيف موحّد لحالة التحويل
-  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : (rr.codAgent || "").toLowerCase() === agentFT.toLowerCase()); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; const statusOk = statusFT === "all" || txStatus(t) === statusFT; const cid = (rr.companyId || "").toLowerCase(); const searchOk = !qq || (qtExact ? (cid === qq || (rr.phone || "").toLowerCase() === qq || (rr.name || "").toLowerCase() === qq || (t.reference || "").toLowerCase() === qq) : ((rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || cid.includes(qq) || (t.reference || "").toLowerCase().includes(qq))); return agOk && typeOk && natOk && statusOk && searchOk; });
+  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : nEmail(rr.codAgent) === nEmail(agentFT)); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; const statusOk = statusFT === "all" || txStatus(t) === statusFT; const cid = (rr.companyId || "").toLowerCase(); const searchOk = !qq || (qtExact ? (cid === qq || (rr.phone || "").toLowerCase() === qq || (rr.name || "").toLowerCase() === qq || (t.reference || "").toLowerCase() === qq) : ((rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || cid.includes(qq) || (t.reference || "").toLowerCase().includes(qq))); return agOk && typeOk && natOk && statusOk && searchOk; });
   const totalPages = Math.max(1, Math.ceil(list.length / PER));
   const pageList = list.slice((page - 1) * PER, page * PER);
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
@@ -1555,7 +1556,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     else { key = "pending"; label = t("لم يحوّل (Pending)", "Not transferred (Pending)"); color = "#d97706"; }
     return { r, m, key, label, color, hasPending };
   }).filter((x) => x.m.codToTransfer > 0.001);
-  const shownDue = dueRows.filter((x) => (typeDue === "all" || x.r.type === typeDue) && (natDue === "all" || natClass(x.r.nationality) === natDue) && (statusF === "all" || x.key === statusF) && (agentF === "all" || (agentF === "none" ? !x.r.codAgent : (x.r.codAgent || "").toLowerCase() === agentF.toLowerCase())) && (x.r.name.includes(q) || (x.r.phone || "").includes(q) || (x.r.companyId || "").includes(q)));
+  const shownDue = dueRows.filter((x) => (typeDue === "all" || x.r.type === typeDue) && (natDue === "all" || natClass(x.r.nationality) === natDue) && (statusF === "all" || x.key === statusF) && (agentF === "all" || (agentF === "none" ? !x.r.codAgent : nEmail(x.r.codAgent) === nEmail(agentF))) && (x.r.name.includes(q) || (x.r.phone || "").includes(q) || (x.r.companyId || "").includes(q)));
   return (
     <div className="space-y-4">
       <Card className="p-5">
@@ -1610,7 +1611,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
           </div>
           <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
-        {(() => { const cnt = (k) => listAll.filter((t) => { const rr = rInfo(t.riderId); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : (rr.codAgent || "").toLowerCase() === agentFT.toLowerCase()); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; return agOk && typeOk && natOk && (k === "all" || txStatus(t) === k); }).length; const tabs = [["all", t("الكل", "All"), "#0C1B33"], ["review", t("قيد المراجعة", "Under review"), "#d97706"], ["approved", t("موافق", "Approved"), "#0f9d58"], ["rejected", t("مرفوض", "Rejected"), "#c0341d"]]; return (
+        {(() => { const cnt = (k) => listAll.filter((t) => { const rr = rInfo(t.riderId); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : nEmail(rr.codAgent) === nEmail(agentFT)); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; return agOk && typeOk && natOk && (k === "all" || txStatus(t) === k); }).length; const tabs = [["all", t("الكل", "All"), "#0C1B33"], ["review", t("قيد المراجعة", "Under review"), "#d97706"], ["approved", t("موافق", "Approved"), "#0f9d58"], ["rejected", t("مرفوض", "Rejected"), "#c0341d"]]; return (
           <div className="flex gap-2 flex-wrap mb-3 border-b border-slate-100 pb-3">
             {tabs.map(([k, lbl, col]) => { const active = statusFT === k; return (
               <button key={k} onClick={() => { setStatusFT(k); setPage(1); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition" style={active ? { background: col, color: "#fff", borderColor: col } : { background: "#fff", color: col, borderColor: col + "44" }}>{lbl} <span className="opacity-80">({cnt(k)})</span></button>
