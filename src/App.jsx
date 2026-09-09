@@ -1422,6 +1422,8 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const [agentFT, setAgentFT] = useState("all");
   const [typeFT, setTypeFT] = useState("all"); // فلتر النوع لجدول التحويلات
   const [natFT, setNatFT] = useState("all"); // فلتر الجنسية لجدول التحويلات
+  const [statusFT, setStatusFT] = useState("all"); // فلتر الحالة لجدول التحويلات
+  const [qtExact, setQtExact] = useState(false); // بحث تام بالـ ID عند ضغط Enter
   const PER = 25;
   const [viewReceipt, setViewReceipt] = useState(null);
   const myEmail = (user && user.email) || "";
@@ -1432,7 +1434,8 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const canControl = (riderId) => { const r = db.riders.find((x) => x.id === riderId); return isAdminU || (r && r.codAgent && r.codAgent.toLowerCase() === myEmail.toLowerCase()); }; // فقط المسؤول (أو الأدمن) يتحكم
   const agentName = (riderId) => { const r = db.riders.find((x) => x.id === riderId); if (!r || !r.codAgent) return "—"; const s = { ...STAFF_BY_EMAIL, ...(db.staff || {}) }[r.codAgent]; return (s && s.name) || r.codAgent; };
   const listAll = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
-  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : (rr.codAgent || "").toLowerCase() === agentFT.toLowerCase()); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; return agOk && typeOk && natOk && (!qq || (rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || (rr.companyId || "").toLowerCase().includes(qq) || (t.reference || "").toLowerCase().includes(qq)); });
+  const txStatus = (t) => (t.status === "Approved" ? "approved" : t.status === "Rejected" ? "rejected" : "review"); // تصنيف موحّد لحالة التحويل
+  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : (rr.codAgent || "").toLowerCase() === agentFT.toLowerCase()); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; const statusOk = statusFT === "all" || txStatus(t) === statusFT; const cid = (rr.companyId || "").toLowerCase(); const searchOk = !qq || (qtExact ? (cid === qq || (rr.phone || "").toLowerCase() === qq || (rr.name || "").toLowerCase() === qq || (t.reference || "").toLowerCase() === qq) : ((rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || cid.includes(qq) || (t.reference || "").toLowerCase().includes(qq))); return agOk && typeOk && natOk && statusOk && searchOk; });
   const totalPages = Math.max(1, Math.ceil(list.length / PER));
   const pageList = list.slice((page - 1) * PER, page * PER);
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
@@ -1595,10 +1598,11 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-slate-800">{t("سجل التحويلات المرفوعة", "Submitted Transfers")} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
           <div className="flex gap-2 flex-wrap">
-            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-56" placeholder={t("بحث: اسم / هاتف / ID / رقم مرجعي", "name / phone / ID / reference")} value={qT} onChange={(e) => { setQT(e.target.value); setPage(1); }} /></div>
+            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border px-3 py-2 text-sm w-56 pr-9 pl-3" style={{ borderColor: qtExact ? BRAND.orange : "#cbd5e1" }} placeholder={t("بحث: اسم / هاتف / ID / مرجع — Enter للمطابقة التامة", "name / phone / ID / reference — Enter for exact")} value={qT} onChange={(e) => { setQT(e.target.value); setQtExact(false); setPage(1); }} onKeyDown={(e) => { if (e.key === "Enter") { setQtExact(true); setPage(1); } }} />{qtExact && <span className="absolute left-2 top-2.5 text-[10px] font-bold" style={{ color: BRAND.orange }}>=</span>}</div>
             <select value={agentFT} onChange={(e) => { setAgentFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
             <select value={typeFT} onChange={(e) => { setTypeFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
             <select value={natFT} onChange={(e) => { setNatFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
+            <select value={statusFT} onChange={(e) => { setStatusFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All statuses")}</option><option value="review">{t("قيد المراجعة", "Under review")}</option><option value="approved">{t("موافق", "Approved")}</option><option value="rejected">{t("مرفوض", "Rejected")}</option></select>
           </div>
           <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
@@ -1810,9 +1814,13 @@ function ReconTab({ company, db, save }) {
     e.target.value = "";
   };
   const reconcile = () => {
+    if (!bank || bank.length === 0) { setMsg(t("ارفع كشف البنك أولاً لتشغيل المطابقة.", "Upload the bank statement first to run reconciliation.")); return; }
     const transfers = db.transfers.map((t) => {
       if (!rIds.has(t.riderId)) return t;
+      // لا تلمس التحويلات التي بتّ فيها الموظف يدوياً (مقبول/مرفوض) — القرار اليدوي هو المرجع
+      if (t.status === "Approved" || t.status === "Rejected") return t;
       const c = classifyTransfer(t, bank);
+      if (c.code === "pending") return t; // لا تكتب "بانتظار كشف البنك" — اتركها كما هي للموظف
       return { ...t, status: c.status, recon: c.code, reconLabel: `${c.emoji} ${c.label}` };
     });
     save({ ...db, transfers });
