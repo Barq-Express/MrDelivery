@@ -605,6 +605,19 @@ function _computeRiderMoney(db, riderId) {
   const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000; // تقريب لـ3 خانات (إزالة فروق الفلوت)
   return { orders, hours, hoursRaw, hoursCapped, hoursPay: r3(hoursPay), codToTransfer: r3(codToTransfer), transferred: r3(transferred), deducted: r3(deducted), owed: r3(codToTransfer - deducted), pendingAmt: r3(deducted - transferred), earn: r3(earn), paidDues: r3(paidDues), duesRemaining: r3(earn - paidDues) };
 }
+// حساب مبالغ COD ضمن مدة (from/to بصيغة YYYY-MM-DD). أي طرف فارغ = بلا حد
+function riderMoneyRange(db, riderId, from, to) {
+  const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+  const inRange = (d) => { const s = String(d || "").slice(0, 10); if (!s) return false; if (from && s < from) return false; if (to && s > to) return false; return true; };
+  // COD الكلي = مجموع transferDue من الشيتات ضمن المدة + تعديلات COD المعتمدة ضمن المدة
+  const orderCod = db.imports.filter((im) => inRange(im.date)).reduce((a, im) => { const rr = im.results.find((x) => x.riderId === riderId); return a + (rr ? (Number(rr.transferDue) || 0) : 0); }, 0);
+  const orders = db.imports.filter((im) => inRange(im.date)).reduce((a, im) => { const rr = im.results.find((x) => x.riderId === riderId); return a + (rr ? (rr.orders || 0) : 0); }, 0);
+  const codAdj = (db.codAdjustments || []).filter((a) => a.riderId === riderId && a.status === "approved" && inRange(a.at)).reduce((s, a) => s + (Number(a.delta) || 0), 0);
+  const codToTransfer = orderCod + codAdj;
+  const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved" && inRange(t.date)).reduce((a, t) => a + (Number(t.amount) || 0), 0);
+  const deducted = db.transfers.filter((t) => t.riderId === riderId && t.status !== "Rejected" && inRange(t.date)).reduce((a, t) => a + (Number(t.amount) || 0), 0);
+  return { orders, codToTransfer: r3(codToTransfer), transferred: r3(transferred), deducted: r3(deducted), owed: r3(codToTransfer - deducted), pendingAmt: r3(deducted - transferred) };
+}
 
 /* ============================================================
    Excel importer (per company)
@@ -1511,16 +1524,19 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     applyDecision(rejFor, "Rejected", rejReason.trim());
     setRejFor(null); setRejReason("");
   };
-  const pending = list.filter((t) => t.status === "Pending").length;
+  const pending = list.filter((t) => !t.reconLabel && t.status !== "Rejected" && t.status !== "Approved").length; // قيد المراجعة = لم يُبَت فيه بعد (نفس معيار الصفوف)
   const [q, setQ] = useState("");
   const [statusF, setStatusF] = useState("all");
   const [agentF, setAgentF] = useState("all");
   const [typeDue, setTypeDue] = useState("all"); // فلتر النوع لجدول المستحقات
   const [natDue, setNatDue] = useState("all"); // فلتر الجنسية لجدول المستحقات
+  const [dueFrom, setDueFrom] = useState(""); // فلتر التاريخ (من) لجدول المستحقات
+  const [dueTo, setDueTo] = useState(""); // فلتر التاريخ (إلى) لجدول المستحقات
   // نظرة عامة لكل مندوب: كم عليه COD وهل حوّل
   const rdrs = visibleRiders.filter((r) => r.status === "Active");
+  const dateActive = !!(dueFrom || dueTo); // هل فلتر التاريخ مفعّل؟
   const dueRows = rdrs.map((r) => {
-    const m = riderMoney(db, r.id);
+    const m = dateActive ? riderMoneyRange(db, r.id, dueFrom, dueTo) : riderMoney(db, r.id);
     const trs = db.transfers.filter((t) => t.riderId === r.id);
     const hasPending = trs.some((t) => !t.reconLabel && t.status !== "Rejected"); // أي تحويل لم يُبَت فيه = قيد المراجعة (نفس معيار الجدول الأسفل)
     const lastDecided = trs.filter((t) => t.decidedBy).slice(-1)[0];
@@ -1545,6 +1561,9 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             <select value={agentF} onChange={(e) => setAgentF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
             <select value={typeDue} onChange={(e) => setTypeDue(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
             <select value={natDue} onChange={(e) => setNatDue(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
+            <input type="date" value={dueFrom} onChange={(e) => setDueFrom(e.target.value)} title={t("من تاريخ", "From date")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input type="date" value={dueTo} onChange={(e) => setDueTo(e.target.value)} title={t("إلى تاريخ", "To date")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            {(dueFrom || dueTo) && <button onClick={() => { setDueFrom(""); setDueTo(""); }} className="text-xs font-semibold text-slate-500 px-2">{t("مسح التاريخ", "Clear dates")}</button>}
             <Btn kind="ghost" size="sm" onClick={() => { const STAR = { review: "قيد المراجعة", approved: "تم التحويل", rejected: "مرفوض", pending: "لم يحوّل" }; exportExcel(shownDue.map((x) => { const r3 = (n) => { const v = Math.round((Number(n) || 0) * 1000) / 1000; return Math.abs(v) < 0.01 ? 0 : v; }; return { المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": r3(x.m.codToTransfer), المحوّل_المعتمد: r3(x.m.transferred), قيد_المراجعة: r3(x.m.pendingAmt), المتبقي: r3(x.m.owed), الحالة: STAR[x.key] || x.label }; }), "COD_Dues_" + company); }}><Download size={14} /> Excel ({shownDue.length})</Btn>
           </div>
         </div>
@@ -1562,7 +1581,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
                 <td className="px-3 font-bold" style={{ color: x.m.owed > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(x.m.owed)}</td>
                 <td className="px-3"><Pill color={x.color}>{x.label}</Pill></td>
                 <td className="px-3"><div className="flex gap-1 items-center">
-                  {canControl(x.r.id) && <button onClick={() => openAdj(x.r, x.m.codToTransfer)} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }} title={t("تعديل COD", "Adjust COD")}>± COD</button>}
+                  {canControl(x.r.id) && !dateActive && <button onClick={() => openAdj(x.r, x.m.codToTransfer)} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ background: "#eef2ff", color: BRAND.blue }} title={t("تعديل COD", "Adjust COD")}>± COD</button>}
                   {(db.codAdjustments || []).some((a) => a.riderId === x.r.id) && <button onClick={() => setHistFor(x.r)} className="text-slate-400" title={t("سجل التعديلات", "Adjustments log")}><Clock size={14} /></button>}
                 </div></td>
               </tr>
@@ -1604,10 +1623,12 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1 items-center">
-                      {canControl(tf.riderId) ? <>
-                        <button onClick={() => setStatus(tf.id, "Approved")} title={tr("قبول")} className="text-green-600 hover:opacity-70"><CheckCircle2 size={17} /></button>
-                        <button onClick={() => setStatus(tf.id, "Rejected")} title={tr("رفض")} className="text-red-600 hover:opacity-70"><XCircle size={17} /></button>
-                      </> : <span className="text-[10px] text-slate-400">{agentName(tf.riderId)}</span>}
+                      {canControl(tf.riderId) ? (
+                        (!tf.reconLabel && tf.status !== "Approved" && tf.status !== "Rejected") ? <>
+                          <button onClick={() => setStatus(tf.id, "Approved")} disabled={decidingId === tf.id} title={tr("قبول")} className="text-green-600 hover:opacity-70 disabled:opacity-30"><CheckCircle2 size={17} /></button>
+                          <button onClick={() => setStatus(tf.id, "Rejected")} disabled={decidingId === tf.id} title={tr("رفض")} className="text-red-600 hover:opacity-70 disabled:opacity-30"><XCircle size={17} /></button>
+                        </> : <span className="text-[10px] font-semibold" style={{ color: tf.status === "Approved" ? "#0f9d58" : tf.status === "Rejected" ? "#c0341d" : "#94a3b8" }}>{tf.status === "Approved" ? t("مقبول ✓", "Approved ✓") : tf.status === "Rejected" ? t("مرفوض", "Rejected") : t("تمّت المعالجة", "Processed")}</span>
+                      ) : <span className="text-[10px] text-slate-400">{agentName(tf.riderId)}</span>}
                       {tf.auditLog && tf.auditLog.length > 0 && <button onClick={() => setViewAudit(tf)} title={t("سجل التدقيق", "Audit log")} className="text-slate-400 hover:text-slate-700"><Clock size={15} /></button>}
                     </div>
                   </td>
