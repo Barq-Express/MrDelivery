@@ -1533,6 +1533,18 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
     applyDecision(rejFor, "Rejected", rejReason.trim());
     setRejFor(null); setRejReason("");
   };
+  const revertDecision = (id) => {
+    const cur = db.transfers.find((x) => x.id === id);
+    if (!guardDecider(cur)) return;
+    if (!window.confirm(t("التراجع عن هذا القرار وإرجاع التحويل إلى \"قيد المراجعة\"؟", "Revert this decision and return the transfer to \"Under review\"?"))) return;
+    const me = (user && (user.name || user.email)) || "";
+    setDecidingId(id);
+    supabase.rpc("admin_decide_transfer", { p_id: id, p_status: "Pending", p_by: me, p_label: "", p_reason: "" }).then(({ error }) => {
+      setDecidingId(null);
+      if (error) { alert(tr("تعذّر التراجع، حاول مرة أخرى")); return; }
+      if (onRefresh) onRefresh();
+    });
+  };
   const pending = list.filter((t) => !t.reconLabel && t.status !== "Rejected" && t.status !== "Approved").length; // قيد المراجعة = لم يُبَت فيه بعد (نفس معيار الصفوف)
   const [q, setQ] = useState("");
   const [statusF, setStatusF] = useState("all");
@@ -1643,7 +1655,10 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
                         (!tf.reconLabel && tf.status !== "Approved" && tf.status !== "Rejected") ? <>
                           <button onClick={() => setStatus(tf.id, "Approved")} disabled={decidingId === tf.id} title={tr("قبول")} className="text-green-600 hover:opacity-70 disabled:opacity-30"><CheckCircle2 size={17} /></button>
                           <button onClick={() => setStatus(tf.id, "Rejected")} disabled={decidingId === tf.id} title={tr("رفض")} className="text-red-600 hover:opacity-70 disabled:opacity-30"><XCircle size={17} /></button>
-                        </> : <span className="text-[10px] font-semibold" style={{ color: tf.status === "Approved" ? "#0f9d58" : tf.status === "Rejected" ? "#c0341d" : "#94a3b8" }}>{tf.status === "Approved" ? t("مقبول ✓", "Approved ✓") : tf.status === "Rejected" ? t("مرفوض", "Rejected") : t("تمّت المعالجة", "Processed")}</span>
+                        </> : <span className="inline-flex items-center gap-1.5">
+                          <span className="text-[10px] font-semibold" style={{ color: tf.status === "Approved" ? "#0f9d58" : tf.status === "Rejected" ? "#c0341d" : "#94a3b8" }}>{tf.status === "Approved" ? t("مقبول ✓", "Approved ✓") : tf.status === "Rejected" ? t("مرفوض", "Rejected") : t("تمّت المعالجة", "Processed")}</span>
+                          <button onClick={() => revertDecision(tf.id)} disabled={decidingId === tf.id} title={t("تراجع عن القرار", "Revert decision")} className="text-slate-400 hover:text-amber-600 disabled:opacity-30"><RefreshCw size={14} /></button>
+                        </span>
                       ) : <span className="text-[10px] text-slate-400">{agentName(tf.riderId)}</span>}
                       {tf.auditLog && tf.auditLog.length > 0 && <button onClick={() => setViewAudit(tf)} title={t("سجل التدقيق", "Audit log")} className="text-slate-400 hover:text-slate-700"><Clock size={15} /></button>}
                     </div>
