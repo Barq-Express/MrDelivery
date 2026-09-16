@@ -362,6 +362,16 @@ const STAFF_BY_EMAIL = {
 
 /* ---------- helpers ---------- */
 const todayStr = () => new Date().toISOString().slice(0, 10);
+// توقيت عمان (UTC+4) — مستقل عن إعداد جهاز المستخدم
+const omanNow = () => new Date(Date.now() + (new Date().getTimezoneOffset() * 60000) + (4 * 3600000));
+const omanHM = () => { const d = omanNow(); return d.getHours() * 60 + d.getMinutes(); }; // دقائق منذ منتصف الليل بتوقيت عمان
+const hmToMin = (s) => { const [h, m] = String(s || "0:0").split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+// هل رفع التحويلات مسموح الآن؟ النافذة قد تعبر منتصف الليل (start > end)
+const codWindowOpen = (win) => {
+  if (!win || !win.enabled) return true;
+  const now = omanHM(), s = hmToMin(win.start), e = hmToMin(win.end);
+  return s <= e ? (now >= s && now < e) : (now >= s || now < e);
+};
 const uid = () => Math.random().toString(36).slice(2, 9);
 const omr = (n) => (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + " OMR";
 const daysSince = (d) => (!d ? Infinity : Math.floor((Date.now() - new Date(d).getTime()) / 86400000));
@@ -439,6 +449,7 @@ function normalizeDB(db) {
     areas: db.areas || [],
     excuses: db.excuses || {},
     customBanks: db.customBanks || [],
+    codWindow: db.codWindow || { enabled: true, start: "00:00", end: "15:00" }, // نافذة رفع التحويلات (توقيت عمان)
     codAdjustments: db.codAdjustments || [],
     hr: db.hr || { leaveTypes: HR_LEAVE_DEFAULTS, employees: [], leaveRequests: [], payrollRuns: [] },
   };
@@ -2446,9 +2457,10 @@ function RiderPortal({ db, riderId, creds, refresh }) {
   const myTransfers = db.transfers.filter((t) => t.riderId === riderId).sort((a, b) => b.date.localeCompare(a.date));
   const lastRejected = myTransfers.find((t) => t.status === "Rejected");
   const submit = () => {
+    if (!codWindowOpen(db.codWindow)) { const w = db.codWindow || {}; alert(t("رفع التحويلات متاح فقط من " + w.start + " حتى " + w.end + " (بتوقيت عمان). الرجاء المحاولة خلال هذه الفترة.", "Transfers can only be submitted between " + w.start + " and " + w.end + " (Oman time). Please try during this window.")); return; }
     if (!form.amount || !form.reference) return alert(tr("المبلغ والرقم المرجعي مطلوبان"));
     supabase.rpc("rider_submit_transfer", { p_phone: creds.phone, p_password: creds.password, p_amount: Number(form.amount), p_reference: String(form.reference).trim(), p_date: form.date, p_receipt: form.receipt || "" })
-      .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
+      .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.windowClosed) return alert(t("انتهى وقت رفع التحويلات لهذا اليوم. الرجاء المحاولة في الفترة القادمة.", "The transfer window has closed for now. Please try in the next window.")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
   };
   const [upLoading, setUpLoading] = useState(false);
   const [upErr, setUpErr] = useState("");
@@ -2514,18 +2526,25 @@ function RiderPortal({ db, riderId, creds, refresh }) {
       </div>
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} /> {tr("تحويل COD")}</h3>
+        {(() => { const open = codWindowOpen(db.codWindow); const w = db.codWindow || {}; return w.enabled ? (
+          <div className="mb-4 p-3 rounded-lg text-sm flex items-center gap-2" style={{ background: open ? "#f0fdf4" : "#fff1ee", color: open ? "#0f9d58" : "#c0341d" }}>
+            <Clock size={16} />
+            {open ? <span>{t("نافذة التحويل مفتوحة الآن — أرسل إيصالك قبل " + w.end + " (بتوقيت عمان).", "Transfer window is open — submit before " + w.end + " (Oman time).")}</span>
+                  : <span className="font-semibold">{t("نافذة التحويل مغلقة. الرفع متاح من " + w.start + " حتى " + w.end + " (بتوقيت عمان).", "Transfer window closed. Available from " + w.start + " to " + w.end + " (Oman time).")}</span>}
+          </div>
+        ) : null; })()}
         <div className="grid grid-cols-2 gap-4">
           <Field label={tr("قيمة المبلغ المحوّل (OMR)")}><input className={inputCls} type="number" step="0.001" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
           <Field label={tr("الرقم المرجعي")}><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
           <Field label={tr("تاريخ التحويل")}><input className={inputCls} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <Field label={t("إيصال التحويل (صورة أو PDF)", "Transfer receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={onReceipt} /></Field>
+          <Field label={t("إيصال التحويل (صورة أو PDF)", "Transfer receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={onReceipt} disabled={!codWindowOpen(db.codWindow)} /></Field>
         </div>
         {upLoading && <p className="text-xs text-slate-500 mt-2">{t("جارٍ رفع الملف...", "Uploading file...")}</p>}
         {upErr && <p className="text-xs text-red-600 mt-2">{upErr}</p>}
         {form.receipt && !upLoading && (/\.pdf($|\?)/i.test(form.receipt)
           ? <a href={form.receipt} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: BRAND.blue }}><FileText size={16} /> {t("تم رفع ملف PDF — عرض", "PDF uploaded — view")}</a>
           : <img src={form.receipt} alt={tr("إيصال")} className="mt-3 h-28 rounded-lg border border-slate-200" />)}
-        <div className="mt-4"><Btn onClick={submit} disabled={upLoading}>{upLoading ? t("جارٍ الرفع...", "Uploading...") : tr("إرسال التحويل")}</Btn></div>
+        <div className="mt-4"><Btn onClick={submit} disabled={upLoading || !codWindowOpen(db.codWindow)}>{upLoading ? t("جارٍ الرفع...", "Uploading...") : tr("إرسال التحويل")}</Btn></div>
       </Card>
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><Banknote size={18} /> {t("بياناتي البنكية", "My Bank Details")}{rider.bankLocked && <Pill color="#0f9d58">🔒 {t("مؤكّدة", "Confirmed")}</Pill>}</h3>
@@ -4245,6 +4264,19 @@ export default function App() {
           <Field label={tr("تأكيد كلمة المرور")}><input type="password" className={inputCls} value={spw.cf} onChange={(e) => setSpw({ ...spw, cf: e.target.value })} /></Field>
           {spwMsg && <p className="text-xs" style={{ color: spwMsg.charAt(0) === "\u2705" ? "#0f9d58" : "#c0341d" }}>{spwMsg}</p>}
           <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setShowSettings(false)}>{tr("إغلاق")}</Btn><Btn onClick={changeStaffPw}>{tr("حفظ")}</Btn></div>
+          {user.role === "Admin" && (
+            <div className="border-t border-slate-100 pt-4 mt-2">
+              <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-1"><Clock size={16} /> {t("نافذة رفع تحويلات المناديب", "Rider Transfer Window")}</h4>
+              <p className="text-xs text-slate-500 mb-3">{t("خارج هذه الفترة لا يستطيع المندوب رفع الإيصالات (بتوقيت عمان). النافذة قد تعبر منتصف الليل.", "Outside this window riders can't submit receipts (Oman time). The window may cross midnight.")}</p>
+              <label className="flex items-center gap-2 text-sm cursor-pointer mb-3"><input type="checkbox" checked={!!(db.codWindow && db.codWindow.enabled)} onChange={(e) => save({ ...db, codWindow: { ...(db.codWindow || { start: "00:00", end: "15:00" }), enabled: e.target.checked } })} /> {t("تفعيل النافذة الزمنية", "Enable time window")}</label>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t("من الساعة", "From")}><input type="time" className={inputCls} value={(db.codWindow && db.codWindow.start) || "00:00"} onChange={(e) => save({ ...db, codWindow: { ...(db.codWindow || { enabled: true, end: "15:00" }), start: e.target.value } })} /></Field>
+                <Field label={t("إلى الساعة", "To")}><input type="time" className={inputCls} value={(db.codWindow && db.codWindow.end) || "15:00"} onChange={(e) => save({ ...db, codWindow: { ...(db.codWindow || { enabled: true, start: "00:00" }), end: e.target.value } })} /></Field>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">{t("الحالي:", "Current:")} {codWindowOpen(db.codWindow) ? <span style={{ color: "#0f9d58" }}>{t("مفتوحة الآن ✓", "Open now ✓")}</span> : <span style={{ color: "#c0341d" }}>{t("مغلقة الآن", "Closed now")}</span>}</p>
+              <p className="text-[11px] text-amber-600 mt-1">{t("⚠️ لتفعيل المنع على الخادم أيضاً، شغّل ملف SQL المرفق مرة واحدة.", "⚠️ To enforce on the server too, run the attached SQL once.")}</p>
+            </div>
+          )}
         </div>
       </Modal>
     </div>
