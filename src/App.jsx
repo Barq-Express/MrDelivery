@@ -2457,7 +2457,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
   const myTransfers = db.transfers.filter((t) => t.riderId === riderId).sort((a, b) => b.date.localeCompare(a.date));
   const lastRejected = myTransfers.find((t) => t.status === "Rejected");
   const submit = () => {
-    if (!codWindowOpen(db.codWindow)) { const w = db.codWindow || {}; alert(t("رفع التحويلات متاح فقط من " + w.start + " حتى " + w.end + " (بتوقيت عمان). الرجاء المحاولة خلال هذه الفترة.", "Transfers can only be submitted between " + w.start + " and " + w.end + " (Oman time). Please try during this window.")); return; }
+    if (!codWindowOpen(db.codWindow)) { const w = db.codWindow || {}; alert(t("⚠️ رفع التحويلات مغلق الآن.\n\nيمكنك رفع الإيصال فقط من الساعة " + w.start + " حتى " + w.end + " (بتوقيت عُمان).\nالرجاء المحاولة خلال هذه الفترة.", "⚠️ Transfer submission is closed now.\n\nYou can upload receipts only between " + w.start + " and " + w.end + " (Oman time).\nPlease try during this window.")); return; }
     if (!form.amount || !form.reference) return alert(tr("المبلغ والرقم المرجعي مطلوبان"));
     supabase.rpc("rider_submit_transfer", { p_phone: creds.phone, p_password: creds.password, p_amount: Number(form.amount), p_reference: String(form.reference).trim(), p_date: form.date, p_receipt: form.receipt || "" })
       .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.windowClosed) return alert(t("انتهى وقت رفع التحويلات لهذا اليوم. الرجاء المحاولة في الفترة القادمة.", "The transfer window has closed for now. Please try in the next window.")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
@@ -2537,14 +2537,14 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           <Field label={tr("قيمة المبلغ المحوّل (OMR)")}><input className={inputCls} type="number" step="0.001" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
           <Field label={tr("الرقم المرجعي")}><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
           <Field label={tr("تاريخ التحويل")}><input className={inputCls} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <Field label={t("إيصال التحويل (صورة أو PDF)", "Transfer receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={onReceipt} disabled={!codWindowOpen(db.codWindow)} /></Field>
+          <Field label={t("إيصال التحويل (صورة أو PDF)", "Transfer receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={onReceipt} /></Field>
         </div>
         {upLoading && <p className="text-xs text-slate-500 mt-2">{t("جارٍ رفع الملف...", "Uploading file...")}</p>}
         {upErr && <p className="text-xs text-red-600 mt-2">{upErr}</p>}
         {form.receipt && !upLoading && (/\.pdf($|\?)/i.test(form.receipt)
           ? <a href={form.receipt} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: BRAND.blue }}><FileText size={16} /> {t("تم رفع ملف PDF — عرض", "PDF uploaded — view")}</a>
           : <img src={form.receipt} alt={tr("إيصال")} className="mt-3 h-28 rounded-lg border border-slate-200" />)}
-        <div className="mt-4"><Btn onClick={submit} disabled={upLoading || !codWindowOpen(db.codWindow)}>{upLoading ? t("جارٍ الرفع...", "Uploading...") : tr("إرسال التحويل")}</Btn></div>
+        <div className="mt-4"><Btn onClick={submit} disabled={upLoading}>{upLoading ? t("جارٍ الرفع...", "Uploading...") : tr("إرسال التحويل")}</Btn></div>
       </Card>
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><Banknote size={18} /> {t("بياناتي البنكية", "My Bank Details")}{rider.bankLocked && <Pill color="#0f9d58">🔒 {t("مؤكّدة", "Confirmed")}</Pill>}</h3>
@@ -4104,9 +4104,20 @@ export default function App() {
 
   useEffect(() => {
     if (!rider) return;
+    // جلب إعداد نافذة التحويل من app_state (إعداد عام لا ترجّعه rider_login)
+    if (rider.codWindow === undefined) {
+      supabase.from("app_state").select("data").eq("id", APP_ROW_ID).single().then(({ data }) => {
+        const cw = (data && data.data && data.data.codWindow) || { enabled: false };
+        setRider((cur) => (cur ? { ...cur, codWindow: cw } : cur));
+      }).catch(() => { setRider((cur) => (cur ? { ...cur, codWindow: { enabled: false } } : cur)); });
+    }
     const id = setInterval(() => {
       supabase.rpc("rider_login", { p_phone: rider.creds.phone, p_password: rider.creds.password }).then(({ data }) => {
-        if (data) setRider((cur) => (cur ? { view: normalizeDB(data), creds: cur.creds } : cur));
+        if (data) setRider((cur) => (cur ? { view: normalizeDB(data), creds: cur.creds, codWindow: cur.codWindow } : cur));
+      });
+      // حدّث إعداد النافذة دورياً أيضاً
+      supabase.from("app_state").select("data").eq("id", APP_ROW_ID).single().then(({ data }) => {
+        if (data && data.data) setRider((cur) => (cur ? { ...cur, codWindow: data.data.codWindow || { enabled: false } } : cur));
       });
     }, 30000);
     return () => clearInterval(id);
@@ -4166,14 +4177,15 @@ export default function App() {
   }
 
   if (rider) {
-    const refresh = () => supabase.rpc("rider_login", { p_phone: rider.creds.phone, p_password: rider.creds.password }).then(({ data }) => { if (data) setRider({ view: normalizeDB(data), creds: rider.creds }); });
+    const refresh = () => supabase.rpc("rider_login", { p_phone: rider.creds.phone, p_password: rider.creds.password }).then(({ data }) => { if (data) setRider({ view: normalizeDB(data), creds: rider.creds, codWindow: rider.codWindow }); });
     const logoutRider = () => { try { localStorage.removeItem("mrd_rider"); } catch (e) {} setRider(null); };
     const rd = rider.view.riders[0];
     if (!rd) { logoutRider(); return null; }
+    const riderView = { ...rider.view, codWindow: rider.codWindow !== undefined ? rider.codWindow : { enabled: false } };
     return (
       <div dir={dirOf()} className="min-h-screen bg-slate-100" data-lang={lang}>
         <Topbar user={{ name: rd.name, role: "Rider" }} onLogout={logoutRider} onMenu={null} title={t("بوابة المندوب", "Rider Portal")} logo onToggleLang={toggleLang} />
-        <div className="p-4 md:p-6"><RiderPortal db={rider.view} riderId={rd.id} creds={rider.creds} refresh={refresh} /></div>
+        <div className="p-4 md:p-6"><RiderPortal db={riderView} riderId={rd.id} creds={rider.creds} refresh={refresh} /></div>
       </div>
     );
   }
