@@ -2460,7 +2460,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
     if (!codWindowOpen(db.codWindow)) { const w = db.codWindow || {}; alert(t("⚠️ رفع التحويلات مغلق الآن.\n\nيمكنك رفع الإيصال فقط من الساعة " + w.start + " حتى " + w.end + " (بتوقيت عُمان).\nالرجاء المحاولة خلال هذه الفترة.", "⚠️ Transfer submission is closed now.\n\nYou can upload receipts only between " + w.start + " and " + w.end + " (Oman time).\nPlease try during this window.")); return; }
     if (!form.amount || !form.reference) return alert(tr("المبلغ والرقم المرجعي مطلوبان"));
     supabase.rpc("rider_submit_transfer", { p_phone: creds.phone, p_password: creds.password, p_amount: Number(form.amount), p_reference: String(form.reference).trim(), p_date: form.date, p_receipt: form.receipt || "" })
-      .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.windowClosed) return alert(t("انتهى وقت رفع التحويلات لهذا اليوم. الرجاء المحاولة في الفترة القادمة.", "The transfer window has closed for now. Please try in the next window.")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); refresh(); });
+      .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.windowClosed) return alert(t("انتهى وقت رفع التحويلات لهذا اليوم. الرجاء المحاولة في الفترة القادمة.", "The transfer window has closed for now. Please try in the next window.")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); if (data && data.error) return alert(t("تعذّر إرسال التحويل: ", "Submit failed: ") + data.error); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); alert(t("✅ تم إرسال التحويل بنجاح! سيظهر في سجل تحويلاتك قيد المراجعة.", "✅ Transfer submitted successfully! It will appear in your history under review.")); refresh(); });
   };
   const [upLoading, setUpLoading] = useState(false);
   const [upErr, setUpErr] = useState("");
@@ -2484,12 +2484,12 @@ function RiderPortal({ db, riderId, creds, refresh }) {
     if (f.size > 15 * 1024 * 1024) { setUpErr(t("حجم الملف كبير جداً (الحد 15 ميجابايت)", "File too large (max 15MB)")); return; }
     setUpLoading(true);
     const doUpload = async (blob, ext, ct) => {
-      try { const url = await uploadToStorage(blob, ext, ct); setForm((s) => ({ ...s, receipt: url })); }
-      catch (err) { setUpErr(t("تعذّر رفع الملف، تحقّق من الإنترنت وحاول مرة أخرى", "Upload failed, check your connection and retry")); }
+      try { const url = await uploadToStorage(blob, ext, ct); setForm((s) => ({ ...s, receipt: url })); setUpErr(""); }
+      catch (err) { const msg = (err && (err.message || err.error || err.statusCode)) ? String(err.message || err.error || err.statusCode) : ""; setUpErr(t("تعذّر رفع الملف: ", "Upload failed: ") + (msg || t("تحقّق من الإنترنت وحاول مرة أخرى", "check your connection and retry"))); }
       finally { setUpLoading(false); }
     };
     if (isPdf) { doUpload(f, "pdf", "application/pdf"); }
-    else { resizeImage(f).then((dataURL) => doUpload(dataURLtoBlob(dataURL), "jpg", "image/jpeg")); }
+    else { resizeImage(f).then((dataURL) => doUpload(dataURLtoBlob(dataURL), "jpg", "image/jpeg")).catch(() => { setUpLoading(false); setUpErr(t("تعذّر معالجة الصورة، حاول مرة أخرى", "Could not process image, try again")); }); }
   };
   const changePw = () => {
     if (!pwf.cur) return setPwMsg(tr("أدخل كلمة المرور الحالية"));
@@ -2541,9 +2541,14 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         </div>
         {upLoading && <p className="text-xs text-slate-500 mt-2">{t("جارٍ رفع الملف...", "Uploading file...")}</p>}
         {upErr && <p className="text-xs text-red-600 mt-2">{upErr}</p>}
-        {form.receipt && !upLoading && (/\.pdf($|\?)/i.test(form.receipt)
-          ? <a href={form.receipt} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: BRAND.blue }}><FileText size={16} /> {t("تم رفع ملف PDF — عرض", "PDF uploaded — view")}</a>
-          : <img src={form.receipt} alt={tr("إيصال")} className="mt-3 h-28 rounded-lg border border-slate-200" />)}
+        {form.receipt && !upLoading && (
+          <div className="mt-3">
+            <div className="mb-2 p-2.5 rounded-lg text-sm font-semibold flex items-center gap-2" style={{ background: "#f0fdf4", color: "#0f9d58" }}><CheckCircle2 size={16} /> {t("✅ تم رفع الإيصال بنجاح — اضغط \"إرسال التحويل\" لإتمام العملية.", "✅ Receipt uploaded — press \"Submit Transfer\" to complete.")}</div>
+            {/\.pdf($|\?)/i.test(form.receipt)
+              ? <a href={form.receipt} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-semibold" style={{ color: BRAND.blue }}><FileText size={16} /> {t("عرض ملف PDF", "View PDF")}</a>
+              : <img src={form.receipt} alt={tr("إيصال")} className="h-28 rounded-lg border border-slate-200" />}
+          </div>
+        )}
         <div className="mt-4"><Btn onClick={submit} disabled={upLoading}>{upLoading ? t("جارٍ الرفع...", "Uploading...") : tr("إرسال التحويل")}</Btn></div>
       </Card>
       <Card className="p-5">
@@ -2586,6 +2591,13 @@ function RiderPortal({ db, riderId, creds, refresh }) {
                     {isFT && <td className="px-3" style={{ color: aRed ? "#c0341d" : "inherit", fontWeight: aRed ? 700 : 400 }}>{h.accept ? h.accept + "%" : "—"}{aRed ? " 🔴" : ""}</td>}
                   </tr>
                 ); })}
+                {(() => { const codAdj = (db.codAdjustments || []).filter((a) => a.riderId === riderId && a.status === "approved").reduce((s, a) => s + (Number(a.delta) || 0), 0); return Math.abs(codAdj) > 0.0005 ? (
+                  <tr className="border-b border-slate-50" style={{ background: "#fff7ed" }}>
+                    <td className="py-2 px-3 font-semibold" style={{ color: "#9a3412" }} colSpan={2}>{t("تعديلات يدوية على COD", "Manual COD adjustments")}</td>
+                    <td className="px-3 font-semibold" style={{ color: codAdj > 0 ? "#0f9d58" : "#c0341d" }}>{codAdj > 0 ? "+" : ""}{omr(codAdj)}</td>
+                    {isFT && <td className="px-3">—</td>}{isFT && <td className="px-3">—</td>}
+                  </tr>
+                ) : null; })()}
                 <tr className="font-bold bg-slate-50">
                   <td className="py-2 px-3">{t("الإجمالي", "Total")}</td>
                   <td className="px-3">{m.orders}</td>
