@@ -1632,7 +1632,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             <select value={typeFT} onChange={(e) => { setTypeFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
             <select value={natFT} onChange={(e) => { setNatFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
           </div>
-          <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, التاريخ: tf.date, الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
+          <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, تاريخ_الإيصال: tf.date, وقت_الرفع: tf.submittedAt || "", الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
         {(() => { const cnt = (k) => listAll.filter((t) => { const rr = rInfo(t.riderId); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : nEmail(rr.codAgent) === nEmail(agentFT)); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; return agOk && typeOk && natOk && (k === "all" || txStatus(t) === k); }).length; const tabs = [["all", t("الكل", "All"), "#0C1B33"], ["review", t("قيد المراجعة", "Under review"), "#d97706"], ["approved", t("موافق", "Approved"), "#0f9d58"], ["rejected", t("مرفوض", "Rejected"), "#c0341d"]]; return (
           <div className="flex gap-2 flex-wrap mb-3 border-b border-slate-100 pb-3">
@@ -1654,7 +1654,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
                   <td className="px-3 text-slate-500">{riderCompanyId(tf.riderId)}</td>
                   <td className="px-3">{omr(tf.amount)}</td>
                   <td className="px-3" dir="ltr">{tf.reference}</td>
-                  <td className="px-3 text-slate-500">{tf.date}</td>
+                  <td className="px-3 text-slate-500">{tf.date}{tf.submittedAt ? <div className="text-[10px] text-slate-400" dir="ltr">{LANG === "en" ? "Sent: " : "رُفع: "}{tf.submittedAt}</div> : null}</td>
                   <td className="px-3">{tf.receipt ? <button onClick={() => setViewReceipt(tf)} className="text-slate-500 hover:text-slate-800"><Eye size={16} /></button> : "—"}</td>
                   <td className="px-3">
                     {tf.reconLabel ? <Pill color={tf.status === "Approved" ? "#0f9d58" : tf.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(tf.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}
@@ -2663,13 +2663,18 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("المبلغ"), tr("المرجع"), tr("الحالة"), ""].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
           <tbody>
-            {myTransfers.map((t) => (
+            {myTransfers.map((t) => {
+              // زر التعديل يظهر فقط للمرفوض الذي لم يُعَد إرساله بعد
+              // (لا يوجد تحويل غير مرفوض أحدث منه)
+              const hasNewer = myTransfers.some((o) => o.id !== t.id && o.status !== "Rejected" && String(o.submittedAt || o.date || "") >= String(t.submittedAt || t.date || ""));
+              const showEdit = t.status === "Rejected" && !hasNewer;
+              return (
               <tr key={t.id} className="border-b border-slate-50">
-                <td className="py-2 px-3">{t.date}</td><td className="px-3">{omr(t.amount)}</td><td className="px-3" dir="ltr">{t.reference}</td>
+                <td className="py-2 px-3">{t.date}{t.submittedAt ? <div className="text-[10px] text-slate-400" dir="ltr">{LANG === "en" ? "Sent: " : "رُفع: "}{t.submittedAt}</div> : null}</td><td className="px-3">{omr(t.amount)}</td><td className="px-3" dir="ltr">{t.reference}</td>
                 <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}{t.status === "Rejected" && t.rejectReason ? <div className="text-[11px] text-red-600 mt-1">{tr("سبب الرفض")}: {t.rejectReason}</div> : null}</td>
-                <td className="px-3">{t.status === "Rejected" && <button onClick={() => { setForm({ amount: String(t.amount), reference: "", date: todayStr(), receipt: "" }); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg" style={{ background: BRAND.orange + "18", color: BRAND.orange }}><Pencil size={13} /> {LANG === "en" ? "Edit & resend" : "تعديل وإعادة الإرسال"}</button>}</td>
+                <td className="px-3">{showEdit && <button onClick={() => { setForm({ amount: String(t.amount), reference: "", date: todayStr(), receipt: "" }); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg" style={{ background: BRAND.orange + "18", color: BRAND.orange }}><Pencil size={13} /> {LANG === "en" ? "Edit & resend" : "تعديل وإعادة الإرسال"}</button>}</td>
               </tr>
-            ))}
+            ); })}
             {myTransfers.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات")}</td></tr>}
           </tbody>
         </table></div>
