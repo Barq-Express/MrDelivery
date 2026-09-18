@@ -2455,7 +2455,6 @@ function RiderPortal({ db, riderId, creds, refresh }) {
       .then(({ data, error }) => { setBankBusy(false); if (error || !data) return setBankMsg(t("تعذّر الحفظ، حاول مرة أخرى", "Save failed, try again")); if (data.locked) return setBankMsg(t("بياناتك مقفلة. تواصل مع الإدارة لفتح التعديل.", "Your details are locked. Contact admin to unlock.")); setBankMsg(t("✅ تم حفظ بياناتك البنكية وقفلها", "✅ Bank details saved and locked")); refresh(); });
   };
   const myTransfers = db.transfers.filter((t) => t.riderId === riderId).sort((a, b) => b.date.localeCompare(a.date));
-  const lastRejected = myTransfers.find((t) => t.status === "Rejected");
   const submit = () => {
     if (!codWindowOpen(db.codWindow)) { const w = db.codWindow || {}; alert(t("⚠️ رفع التحويلات مغلق الآن.\n\nيمكنك رفع الإيصال فقط من الساعة " + w.start + " حتى " + w.end + " (بتوقيت عُمان).\nالرجاء المحاولة خلال هذه الفترة.", "⚠️ Transfer submission is closed now.\n\nYou can upload receipts only between " + w.start + " and " + w.end + " (Oman time).\nPlease try during this window.")); return; }
     if (!form.amount || !form.reference) return alert(tr("المبلغ والرقم المرجعي مطلوبان"));
@@ -2509,11 +2508,10 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           <div><div className="font-bold text-lg">{rider.name}</div><div className="text-xs text-slate-300">{companyPill(rider.company)} · {rider.type}</div></div>
         </div>
       </Card>
-      {(m.owed > 0.001 || lastRejected) && (
+      {m.owed > 0.001 && (
         <Card className="p-4 border-r-4" style={{ borderColor: "#c0341d", background: "#fff1ee" }}>
           <div className="flex items-start gap-2"><AlertTriangle size={18} color="#c0341d" className="mt-0.5" /><div className="text-sm">
-            {m.owed > 0.001 && <p style={{ color: "#c0341d" }} className="font-semibold">{tr("لديك مبلغ COD لم تحوّله:")} {omr(m.owed)}</p>}
-            {lastRejected && <p className="text-slate-700 mt-1" dir="ltr">Your transfer was rejected. Please transfer again or upload the correct receipt.</p>}
+            <p style={{ color: "#c0341d" }} className="font-semibold">{tr("لديك مبلغ COD لم تحوّله:")} {omr(m.owed)}</p>
           </div></div>
         </Card>
       )}
@@ -2663,15 +2661,16 @@ function RiderPortal({ db, riderId, creds, refresh }) {
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3">{tr("سجل التحويلات")}</h3>
         <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("المبلغ"), tr("المرجع"), tr("الحالة")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+          <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("المبلغ"), tr("المرجع"), tr("الحالة"), ""].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
           <tbody>
             {myTransfers.map((t) => (
               <tr key={t.id} className="border-b border-slate-50">
                 <td className="py-2 px-3">{t.date}</td><td className="px-3">{omr(t.amount)}</td><td className="px-3" dir="ltr">{t.reference}</td>
                 <td className="px-3">{t.reconLabel ? <Pill color={t.status === "Approved" ? "#0f9d58" : t.status === "Rejected" ? "#c0341d" : "#d97706"}>{tr(t.reconLabel)}</Pill> : <Pill color="#d97706">{tr("قيد المراجعة")}</Pill>}{t.status === "Rejected" && t.rejectReason ? <div className="text-[11px] text-red-600 mt-1">{tr("سبب الرفض")}: {t.rejectReason}</div> : null}</td>
+                <td className="px-3">{t.status === "Rejected" && <button onClick={() => { setForm({ amount: String(t.amount), reference: "", date: todayStr(), receipt: "" }); if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg" style={{ background: BRAND.orange + "18", color: BRAND.orange }}><Pencil size={13} /> {t("تعديل وإعادة الإرسال", "Edit & resend")}</button>}</td>
               </tr>
             ))}
-            {myTransfers.length === 0 && <tr><td colSpan={4} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات")}</td></tr>}
+            {myTransfers.length === 0 && <tr><td colSpan={5} className="py-6 text-center text-slate-400">{tr("لا توجد تحويلات")}</td></tr>}
           </tbody>
         </table></div>
       </Card>
