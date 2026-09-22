@@ -2065,7 +2065,7 @@ function ReportsScoped({ db, company }) {
     return { orders, cod, dues };
   };
   const rows = useMemo(() => {
-    if (type === "period") return rs.filter((r) => pType === "all" || r.type === pType).map((r) => { const p = periodStats(r.id); return { r, ...p }; }).filter((x) => x.orders > 0 || x.cod > 0).map((x) => ({ المندوب: x.r.name, ID: x.r.companyId || "", الهاتف: x.r.phone, النوع: x.r.type, الطلبات: x.orders, COD_للفترة: x.cod, الحقوق_للفترة: x.dues }));
+    if (type === "period") return rs.filter((r) => pType === "all" || r.type === pType).map((r) => { const p = periodStats(r.id); return { r, ...p }; }).filter((x) => x.orders > 0 || x.cod > 0).map((x) => ({ المندوب: x.r.name, ID: x.r.companyId || "", الهاتف: x.r.phone, المنطقة: x.r.area || "—", النوع: x.r.type, الطلبات: x.orders, COD_للفترة: x.cod, الحقوق_للفترة: x.dues }));
     if (type === "cod") return rs.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), COD_للتحويل: m.codToTransfer, المحوّل: m.transferred, المتبقي: m.owed }; });
     if (type === "notworked") return rs.filter((r) => r.status === "Active" && daysSince(r.lastWorked) >= NO_WORK_DAYS).map((r) => ({ المندوب: r.name, الشركة: cLabel(r.company), آخر_عمل: r.lastWorked || "—", الأيام: daysSince(r.lastWorked) }));
     if (type === "freelancer") return rs.filter((r) => r.type === "Freelancer").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), الطلبات: m.orders, المستحق: m.earn }; });
