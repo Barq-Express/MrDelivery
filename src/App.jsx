@@ -1440,6 +1440,8 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const [natFT, setNatFT] = useState("all"); // فلتر الجنسية لجدول التحويلات
   const [statusFT, setStatusFT] = useState("all"); // فلتر الحالة لجدول التحويلات
   const [qtExact, setQtExact] = useState(false); // بحث تام بالـ ID عند ضغط Enter
+  const [txFrom, setTxFrom] = useState(""); // فلتر تاريخ التحويل (من) — حسب تاريخ المندوب
+  const [txTo, setTxTo] = useState(""); // فلتر تاريخ التحويل (إلى)
   const PER = 25;
   const [viewReceipt, setViewReceipt] = useState(null);
   const myEmail = (user && user.email) || "";
@@ -1452,7 +1454,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const agentName = (riderId) => { const r = db.riders.find((x) => x.id === riderId); if (!r || !r.codAgent) return "—"; const map = { ...STAFF_BY_EMAIL, ...(db.staff || {}) }; const hit = Object.keys(map).find((k) => nEmail(k) === nEmail(r.codAgent)); return (hit && map[hit] && map[hit].name) || r.codAgent; };
   const listAll = db.transfers.filter((t) => rIds.has(t.riderId)).slice().reverse();
   const txStatus = (t) => (t.status === "Approved" ? "approved" : t.status === "Rejected" ? "rejected" : "review"); // تصنيف موحّد لحالة التحويل
-  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : nEmail(rr.codAgent) === nEmail(agentFT)); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; const statusOk = statusFT === "all" || txStatus(t) === statusFT; const cid = (rr.companyId || "").toLowerCase(); const searchOk = !qq || (qtExact ? (cid === qq || (rr.phone || "").toLowerCase() === qq || (rr.name || "").toLowerCase() === qq || (t.reference || "").toLowerCase() === qq) : ((rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || cid.includes(qq) || (t.reference || "").toLowerCase().includes(qq))); return agOk && typeOk && natOk && statusOk && searchOk; });
+  const list = listAll.filter((t) => { const rr = rInfo(t.riderId); const qq = qT.trim().toLowerCase(); const agOk = agentFT === "all" || (agentFT === "none" ? !rr.codAgent : nEmail(rr.codAgent) === nEmail(agentFT)); const typeOk = typeFT === "all" || rr.type === typeFT; const natOk = natFT === "all" || natClass(rr.nationality) === natFT; const statusOk = statusFT === "all" || txStatus(t) === statusFT; const dt = String(t.date || "").slice(0, 10); const dateOk = (!txFrom || dt >= txFrom) && (!txTo || dt <= txTo); const cid = (rr.companyId || "").toLowerCase(); const searchOk = !qq || (qtExact ? (cid === qq || (rr.phone || "").toLowerCase() === qq || (rr.name || "").toLowerCase() === qq || (t.reference || "").toLowerCase() === qq) : ((rr.name || "").toLowerCase().includes(qq) || (rr.phone || "").includes(qq) || cid.includes(qq) || (t.reference || "").toLowerCase().includes(qq))); return agOk && typeOk && natOk && statusOk && dateOk && searchOk; });
   const totalPages = Math.max(1, Math.ceil(list.length / PER));
   const pageList = list.slice((page - 1) * PER, page * PER);
   const riderName = (id) => db.riders.find((r) => r.id === id)?.name || "—";
@@ -1631,6 +1633,9 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             <select value={agentFT} onChange={(e) => { setAgentFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
             <select value={typeFT} onChange={(e) => { setTypeFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
             <select value={natFT} onChange={(e) => { setNatFT(e.target.value); setPage(1); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
+            <input type="date" value={txFrom} onChange={(e) => { setTxFrom(e.target.value); setPage(1); }} title={t("من تاريخ التحويل", "From transfer date")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input type="date" value={txTo} onChange={(e) => { setTxTo(e.target.value); setPage(1); }} title={t("إلى تاريخ التحويل", "To transfer date")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            {(txFrom || txTo) && <button onClick={() => { setTxFrom(""); setTxTo(""); setPage(1); }} className="text-xs font-semibold text-slate-500 px-2">{t("مسح التاريخ", "Clear dates")}</button>}
           </div>
           <Btn kind="ghost" size="sm" onClick={() => exportExcel(list.map((tf) => ({ المندوب: riderName(tf.riderId), الهاتف: riderPhone(tf.riderId), ID: riderCompanyId(tf.riderId), المبلغ: tf.amount, المرجع: tf.reference, تاريخ_الإيصال: tf.date, وقت_الرفع: tf.submittedAt || "", الحالة: tf.status, التصنيف: tf.reconLabel || "", الموظف: tf.decidedBy || "" })), `Transfers_${company}`)}><Download size={14} /> Excel</Btn>
         </div>
@@ -2046,27 +2051,52 @@ function AttendanceTab({ company, db, save }) {
 }
 function ReportsScoped({ db, company }) {
   const [type, setType] = useState("cod");
-  const types = { cod: tr("تقرير COD"), notworked: tr("لم يعملوا / غير نشطين"), freelancer: tr("مستحقات الفريلانسر"), fulltime: tr("رواتب Full Time"), riders: tr("كل المناديب") };
+  const [pFrom, setPFrom] = useState(""); const [pTo, setPTo] = useState(""); const [pType, setPType] = useState("Freelancer");
+  const types = { period: t("مندوبي فترة (حسب التاريخ)", "Riders in Period"), cod: tr("تقرير COD"), notworked: tr("لم يعملوا / غير نشطين"), freelancer: tr("مستحقات الفريلانسر"), fulltime: tr("رواتب Full Time"), riders: tr("كل المناديب") };
   const rs = db.riders.filter((r) => !company || r.company === company);
+  // حساب طلبات/COD/حقوق مندوب ضمن فترة (حسب تاريخ الشيت)
+  const periodStats = (rid) => {
+    const inR = (d) => { const s = String(d || "").slice(0, 10); return (!pFrom || s >= pFrom) && (!pTo || s <= pTo); };
+    let orders = 0, cod = 0;
+    db.imports.filter((im) => (!company || im.company === company) && inR(im.date)).forEach((im) => { const rr = im.results.find((x) => x.riderId === rid); if (rr) { orders += rr.orders || 0; cod += (rr.transferDue != null ? rr.transferDue : rr.cod) || 0; } });
+    const rider = db.riders.find((r) => r.id === rid);
+    let dues = 0;
+    if (rider) { if (rider.type === "Freelancer") { const defRate = { Snoonu: 1.4, Aramex: 0.7, Talabat: 0 }; const rate = Number(rider.commission) > 0 ? Number(rider.commission) : (defRate[rider.company] || 0); dues = orders * rate; } }
+    return { orders, cod, dues };
+  };
   const rows = useMemo(() => {
+    if (type === "period") return rs.filter((r) => pType === "all" || r.type === pType).map((r) => { const p = periodStats(r.id); return { r, ...p }; }).filter((x) => x.orders > 0 || x.cod > 0).map((x) => ({ المندوب: x.r.name, ID: x.r.companyId || "", الهاتف: x.r.phone, النوع: x.r.type, الطلبات: x.orders, COD_للفترة: x.cod, الحقوق_للفترة: x.dues }));
     if (type === "cod") return rs.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), COD_للتحويل: m.codToTransfer, المحوّل: m.transferred, المتبقي: m.owed }; });
     if (type === "notworked") return rs.filter((r) => r.status === "Active" && daysSince(r.lastWorked) >= NO_WORK_DAYS).map((r) => ({ المندوب: r.name, الشركة: cLabel(r.company), آخر_عمل: r.lastWorked || "—", الأيام: daysSince(r.lastWorked) }));
     if (type === "freelancer") return rs.filter((r) => r.type === "Freelancer").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), الطلبات: m.orders, المستحق: m.earn }; });
     if (type === "fulltime") return rs.filter((r) => r.type === "Full Time").map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الشركة: cLabel(r.company), الطلبات: m.orders, ساعات_الدوام: m.hours, قيمة_الساعات: m.hoursPay, الراتب: m.earn }; });
     return rs.map((r) => ({ المندوب: r.name, الهاتف: r.phone, المدني: r.civil || "", الشركة: cLabel(r.company), النوع: r.type, الحالة: r.status }));
-  }, [type, db, company]);
+  }, [type, db, company, pFrom, pTo, pType]);
   const cols = rows[0] ? Object.keys(rows[0]) : [];
   return (
     <div className="space-y-4">
       <Card className="p-5"><div className="flex items-center justify-between gap-3 flex-wrap">
         <Field label={tr("نوع التقرير")}><select className={inputCls + " w-72"} value={type} onChange={(e) => setType(e.target.value)}>{Object.entries(types).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-        <div className="flex gap-2 pt-5"><Btn kind="ghost" onClick={() => exportExcel(rows, `${company || "All"}_${types[type]}`)}><Download size={15} /> Excel</Btn><Btn kind="ghost" onClick={() => window.print()}><Printer size={15} /> PDF</Btn></div>
+        {type === "period" && <>
+          <Field label={t("من تاريخ", "From")}><input type="date" className={inputCls} value={pFrom} onChange={(e) => setPFrom(e.target.value)} /></Field>
+          <Field label={t("إلى تاريخ", "To")}><input type="date" className={inputCls} value={pTo} onChange={(e) => setPTo(e.target.value)} /></Field>
+          <Field label={t("النوع", "Type")}><select className={inputCls} value={pType} onChange={(e) => setPType(e.target.value)}><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="all">{t("الكل", "All")}</option></select></Field>
+        </>}
+        <div className="flex gap-2 pt-5"><Btn kind="ghost" onClick={() => exportExcel(rows, `${company || "All"}_${types[type]}${type === "period" && (pFrom || pTo) ? "_" + (pFrom || "") + "_" + (pTo || "") : ""}`)}><Download size={15} /> Excel</Btn><Btn kind="ghost" onClick={() => window.print()}><Printer size={15} /> PDF</Btn></div>
       </div></Card>
+      {type === "period" && (() => { const tot = rows.reduce((a, r) => ({ o: a.o + (r.الطلبات || 0), c: a.c + (r["COD_للفترة"] || 0), d: a.d + (r["الحقوق_للفترة"] || 0) }), { o: 0, c: 0, d: 0 }); return (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-xl p-3 text-center" style={{ background: "#eef2ff" }}><div className="text-xs text-slate-500">{t("عدد المناديب", "Riders")}</div><div className="text-2xl font-bold" style={{ color: BRAND.blue }}>{rows.length}</div></div>
+          <div className="rounded-xl p-3 text-center" style={{ background: "#f0fdf4" }}><div className="text-xs text-slate-500">{t("إجمالي الطلبات", "Orders")}</div><div className="text-2xl font-bold" style={{ color: "#0f9d58" }}>{tot.o}</div></div>
+          <div className="rounded-xl p-3 text-center" style={{ background: "#fff7ed" }}><div className="text-xs text-slate-500">{t("إجمالي COD", "COD")}</div><div className="text-2xl font-bold" style={{ color: "#9a3412" }}>{omr(tot.c)}</div></div>
+          <div className="rounded-xl p-3 text-center" style={{ background: "#fef9c3" }}><div className="text-xs text-slate-500">{t("إجمالي الحقوق", "Dues")}</div><div className="text-2xl font-bold" style={{ color: "#a16207" }}>{omr(tot.d)}</div></div>
+        </div>
+      ); })()}
       <Card className="p-5">
         <h3 className="font-bold text-slate-800 mb-3">{types[type]}</h3>
         <div className="overflow-x-auto"><table className="w-full text-sm">
           <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{cols.map((c) => <th key={c} className="py-2 px-3 font-semibold">{tr(c).replace(/_/g, " ")}</th>)}</tr></thead>
-          <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-slate-50">{cols.map((c) => <td key={c} className="py-2 px-3">{typeof r[c] === "number" && /COD|مستحق|راتب|محوّل|متبقي/.test(c) ? omr(r[c]) : r[c]}</td>)}</tr>)}
+          <tbody>{rows.map((r, i) => <tr key={i} className="border-b border-slate-50">{cols.map((c) => <td key={c} className="py-2 px-3">{typeof r[c] === "number" && /COD|مستحق|راتب|محوّل|متبقي|حقوق/.test(c) ? omr(r[c]) : r[c]}</td>)}</tr>)}
             {rows.length === 0 && <tr><td colSpan={cols.length || 1} className="py-6 text-center text-slate-400">{tr("لا بيانات")}</td></tr>}</tbody>
         </table></div>
       </Card>
