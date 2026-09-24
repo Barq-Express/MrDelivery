@@ -28,12 +28,11 @@ const FULL_MONTH_HOURS = 176; // عند بلوغها يُعتبر الراتب �
 const FULL_MONTH_SALARY = 425; // الراتب الشهري الكامل (ريال)
 const pctAccept = (v) => { const n = Number(v) || 0; return n > 0 && n <= 1 ? Math.round(n * 100) : Math.round(n); }; // 1.0 (كسر إكسل) => 100%
 const PAYOUT_INFO = {
-  bankName: "بنك صحار الدولي",
-  holder: "KHADIJA JUMA",
-  account: "011010334735",
-  activePhone: "91927249",
-  iban: "OM440300000011010334735",
-  receiptPhone: "98219412",
+  bankName: "بنك مسقط - Bank Muscat",
+  holder: "Sameer Muhammad Saleem",
+  account: "0435048834800017",
+  activePhone: "97108146",
+  receiptPhone: "75283938",
 };
 const EXCUSE_TYPES = [["sick", "إجازة مرضية", "Sick Leave"], ["normal", "إجازة اعتيادية", "Leave"], ["emergency", "ظرف طارئ", "Emergency"], ["other", "أخرى", "Other"]];
 const excuseLabel = (k) => { const e = EXCUSE_TYPES.find((x) => x[0] === k); return e ? t(e[1], e[2]) : k; };
@@ -2682,7 +2681,6 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">{t("اسم الحساب", "Account name")}</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.holder}</span></div>
           <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">{t("رقم الحساب", "Account no.")}</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.account}</span></div>
           <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">{t("الرقم المفعّل للتحويل", "Active transfer no.")}</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.activePhone}</span></div>
-          <div className="flex justify-between border-b border-slate-50 py-1"><span className="text-slate-500">IBAN</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.iban}</span></div>
           <div className="flex justify-between py-1"><span className="text-slate-500">{t("إرسال الإيصال على", "Send receipt to")}</span><span className="font-semibold" dir="ltr">{PAYOUT_INFO.receiptPhone}</span></div>
         </div>
         <div className="mt-3 p-2 rounded-lg text-xs font-semibold text-center" style={{ background: "#fff7ed", color: "#9a3412" }}>{t("التحويل يومياً بعد انتهاء العمل، وإرسال الإيصال على الرقم أعلاه.", "Transfer daily after work, and send the receipt to the number above.")}</div>
