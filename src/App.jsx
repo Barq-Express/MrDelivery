@@ -2567,8 +2567,14 @@ function RiderPortal({ db, riderId, creds, refresh }) {
         <StatCard icon={<CheckCircle2 size={16} />} label={tr("المحوّل")} value={omr(m.transferred)} accent={BRAND.navy} />
         {rider.type === "Full Time" && <StatCard icon={<Clock size={16} />} label={tr("ساعات الدوام")} value={m.hours} accent="#7c3aed" />}
       </div>
-      <Card className="p-5">
+      <Card className="p-5" id="cod-transfer-form">
         <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} /> {tr("تحويل COD")}</h3>
+        {payFor && (
+          <div className="mb-4 p-3 rounded-lg flex items-center justify-between gap-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+            <div className="text-sm font-semibold" style={{ color: "#9a3412" }}>{t("دفع COD ليوم ", "Paying COD for ")}<span dir="ltr">{payFor.date}</span> — {omr(payFor.cod)} <span className="font-normal text-slate-500">{t("(المبلغ والتاريخ مقفلان)", "(amount & date locked)")}</span></div>
+            <button onClick={() => { setPayFor(null); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); }} className="text-xs font-semibold text-slate-500 whitespace-nowrap">{t("إلغاء", "Cancel")}</button>
+          </div>
+        )}
         {(() => { const open = codWindowOpen(db.codWindow); const w = db.codWindow || {}; return w.enabled ? (
           <div className="mb-4 p-3 rounded-lg text-sm flex items-center gap-2" style={{ background: open ? "#f0fdf4" : "#fff1ee", color: open ? "#0f9d58" : "#c0341d" }}>
             <Clock size={16} />
@@ -2577,9 +2583,9 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           </div>
         ) : null; })()}
         <div className="grid grid-cols-2 gap-4">
-          <Field label={tr("قيمة المبلغ المحوّل (OMR)")}><input className={inputCls} type="number" step="0.001" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+          <Field label={tr("قيمة المبلغ المحوّل (OMR)")}><input className={inputCls} type="number" step="0.001" value={form.amount} onChange={(e) => { if (payFor) return; setForm({ ...form, amount: e.target.value }); }} readOnly={!!payFor} style={payFor ? { background: "#f1f5f9", cursor: "not-allowed", fontWeight: 700 } : undefined} /></Field>
           <Field label={tr("الرقم المرجعي")}><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
-          <Field label={tr("تاريخ التحويل")}><input className={inputCls} type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label={tr("تاريخ التحويل")}><input className={inputCls} type="date" value={form.date} onChange={(e) => { if (payFor) return; setForm({ ...form, date: e.target.value }); }} readOnly={!!payFor} style={payFor ? { background: "#f1f5f9", cursor: "not-allowed", fontWeight: 700 } : undefined} /></Field>
           <Field label={t("إيصال التحويل (صورة أو PDF)", "Transfer receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={onReceipt} /></Field>
         </div>
         {upLoading && <p className="text-xs text-slate-500 mt-2">{t("جارٍ رفع الملف...", "Uploading file...")}</p>}
@@ -2637,7 +2643,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
                       const info = sheetPayInfo(h.date);
                       if (info.st === "approved") return <span className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: "#0f9d58" }}><CheckCircle2 size={14} /> {t("تم الدفع", "Paid")}</span>;
                       if (info.st === "pending") return <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: "#d97706" }}><Clock size={13} /> {t("قيد المراجعة", "Under review")}</span>;
-                      return <button onClick={() => { setForm({ amount: String(h.cod), reference: "", date: h.date, receipt: "" }); setUpErr(""); setPayFor(h); }} className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: "#fee2e2", color: "#c0341d" }}><Upload size={12} /> {info.st === "rejected" ? t("مرفوض — ادفع", "Rejected — Pay") : t("ادفع الآن", "Pay Now")}</button>;
+                      return <button onClick={() => { setForm({ amount: String(h.cod), reference: "", date: h.date, receipt: "" }); setUpErr(""); setPayFor(h); setTimeout(() => { const el = typeof document !== "undefined" && document.getElementById("cod-transfer-form"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60); }} className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: "#fee2e2", color: "#c0341d" }}><Upload size={12} /> {info.st === "rejected" ? t("مرفوض — ادفع", "Rejected — Pay") : t("ادفع الآن", "Pay Now")}</button>;
                     })()}</td>
                   </tr>
                 ); })}
@@ -2956,23 +2962,6 @@ function ShiftsWindow({ db, save, company = null }) {
         )}
       </Modal>
 
-      <Modal open={!!payFor} onClose={() => setPayFor(null)} title={payFor ? t("دفع COD ليوم ", "Pay COD for ") + payFor.date : ""}>
-        {payFor && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg p-3" style={{ background: "#f0fdf4" }}><div className="text-xs text-slate-500">{t("المبلغ المطلوب", "Amount due")}</div><div className="text-xl font-bold" style={{ color: "#0f9d58" }}>{omr(payFor.cod)}</div></div>
-              <div className="rounded-lg p-3" style={{ background: "#eef2ff" }}><div className="text-xs text-slate-500">{t("تاريخ العمل", "Work date")}</div><div className="text-xl font-bold" dir="ltr" style={{ color: BRAND.blue }}>{payFor.date}</div></div>
-            </div>
-            <p className="text-xs text-slate-500">{t("المبلغ والتاريخ ثابتان. أدخل الرقم المرجعي وأرفق الإيصال فقط.", "Amount and date are fixed. Just enter the reference and attach the receipt.")}</p>
-            <Field label={tr("الرقم المرجعي")}><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
-            <Field label={t("إيصال التحويل (صورة أو PDF)", "Transfer receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={onReceipt} /></Field>
-            {upLoading && <p className="text-xs text-slate-500">{t("جارٍ رفع الملف...", "Uploading file...")}</p>}
-            {upErr && <p className="text-xs text-red-600">{upErr}</p>}
-            {form.receipt && !upLoading && <div className="p-2 rounded-lg text-sm font-semibold flex items-center gap-2" style={{ background: "#f0fdf4", color: "#0f9d58" }}><CheckCircle2 size={15} /> {t("تم رفع الإيصال", "Receipt uploaded")}</div>}
-            <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setPayFor(null)}>{tr("إلغاء")}</Btn><Btn onClick={submit} disabled={upLoading}>{upLoading ? t("جارٍ الرفع...", "Uploading...") : t("إرسال الدفع", "Send Payment")}</Btn></div>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }
