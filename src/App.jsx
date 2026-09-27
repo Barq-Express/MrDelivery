@@ -1432,6 +1432,7 @@ function OrdersTab({ company, db, save, user }) {
 
 function TransfersTab({ company, db, save, user, onRefresh }) {
   const [viewAudit, setViewAudit] = useState(null);
+  const [subTab, setSubTab] = useState("dues"); // dues | submitted — تبويب فرعي
   const [page, setPage] = useState(1);
   const [qT, setQT] = useState("");
   const [agentFT, setAgentFT] = useState("all");
@@ -1583,7 +1584,12 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const shownDue = dueRows.filter((x) => (typeDue === "all" || x.r.type === typeDue) && (natDue === "all" || natClass(x.r.nationality) === natDue) && (statusF === "all" || x.key === statusF) && (agentF === "all" || (agentF === "none" ? !x.r.codAgent : nEmail(x.r.codAgent) === nEmail(agentF))) && (x.r.name.includes(q) || (x.r.phone || "").includes(q) || (x.r.companyId || "").includes(q)));
   return (
     <div className="space-y-4">
-      <Card className="p-5">
+      <div className="flex gap-2 border-b border-slate-200">
+        {[["dues", t("مستحقات COD", "COD Dues")], ["submitted", t("سجل التحويلات", "Submitted Transfers")]].map(([k, lbl]) => (
+          <button key={k} onClick={() => setSubTab(k)} className="px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition" style={subTab === k ? { borderColor: BRAND.orange, color: BRAND.orange } : { borderColor: "transparent", color: "#64748b" }}>{lbl}{k === "submitted" && pending > 0 ? <span className="mr-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full px-1.5" style={{ background: "#d9770622", color: "#d97706" }}>{pending}</span> : null}</button>
+        ))}
+      </div>
+      <Card className="p-5" style={{ display: subTab === "dues" ? undefined : "none" }}>
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 className="font-bold text-slate-800">{t("مستحقات COD على المناديب", "Rider COD Dues")} — {cLabel(company)}</h3>
           <div className="flex gap-2 flex-wrap">
@@ -1624,7 +1630,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
         </table></div>
       </Card>
 
-      <Card className="p-5">
+      <Card className="p-5" style={{ display: subTab === "submitted" ? undefined : "none" }}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-slate-800">{t("سجل التحويلات المرفوعة", "Submitted Transfers")} {pending > 0 && <Pill color="#d97706">{pending} {tr("قيد المراجعة")}</Pill>}</h3>
           <div className="flex gap-2 flex-wrap">
@@ -2467,9 +2473,11 @@ function HREmpPortal({ data, creds, onRefresh, onLogout }) {
   );
 }
 
+const PAY_PER_SHEET_START = "2026-09-27"; // نظام الدفع لكل شيت يبدأ من هذا التاريخ
 function RiderPortal({ db, riderId, creds, refresh }) {
   const rider = db.riders.find((r) => r.id === riderId);
   const [form, setForm] = useState({ amount: "", reference: "", date: todayStr(), receipt: "" });
+  const [payFor, setPayFor] = useState(null); // الشيت المختار للدفع (ادفع الآن)
   const [pwf, setPwf] = useState({ cur: "", nw: "", cf: "" });
   const [pwMsg, setPwMsg] = useState("");
   const m = riderMoney(db, riderId);
@@ -2484,11 +2492,19 @@ function RiderPortal({ db, riderId, creds, refresh }) {
       .then(({ data, error }) => { setBankBusy(false); if (error || !data) return setBankMsg(t("تعذّر الحفظ، حاول مرة أخرى", "Save failed, try again")); if (data.locked) return setBankMsg(t("بياناتك مقفلة. تواصل مع الإدارة لفتح التعديل.", "Your details are locked. Contact admin to unlock.")); setBankMsg(t("✅ تم حفظ بياناتك البنكية وقفلها", "✅ Bank details saved and locked")); refresh(); });
   };
   const myTransfers = db.transfers.filter((t) => t.riderId === riderId).sort((a, b) => b.date.localeCompare(a.date));
+  // حالة دفع شيت معيّن (حسب مطابقة التاريخ): none | pending | approved | rejected
+  const sheetPayInfo = (sheetDate) => {
+    const txs = db.transfers.filter((x) => x.riderId === riderId && String(x.date || "").slice(0, 10) === String(sheetDate || "").slice(0, 10));
+    if (txs.length === 0) return { st: "none" };
+    if (txs.some((x) => x.status === "Approved")) return { st: "approved" };
+    if (txs.some((x) => x.status !== "Rejected")) return { st: "pending" };
+    return { st: "rejected" };
+  };
   const submit = () => {
     if (!codWindowOpen(db.codWindow)) { const w = db.codWindow || {}; alert(t("⚠️ رفع التحويلات مغلق الآن.\n\nيمكنك رفع الإيصال فقط من الساعة " + w.start + " حتى " + w.end + " (بتوقيت عُمان).\nالرجاء المحاولة خلال هذه الفترة.", "⚠️ Transfer submission is closed now.\n\nYou can upload receipts only between " + w.start + " and " + w.end + " (Oman time).\nPlease try during this window.")); return; }
     if (!form.amount || !form.reference) return alert(tr("المبلغ والرقم المرجعي مطلوبان"));
     supabase.rpc("rider_submit_transfer", { p_phone: creds.phone, p_password: creds.password, p_amount: Number(form.amount), p_reference: String(form.reference).trim(), p_date: form.date, p_receipt: form.receipt || "" })
-      .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.windowClosed) return alert(t("انتهى وقت رفع التحويلات لهذا اليوم. الرجاء المحاولة في الفترة القادمة.", "The transfer window has closed for now. Please try in the next window.")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); if (data && data.error) return alert(t("تعذّر إرسال التحويل: ", "Submit failed: ") + data.error); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); alert(t("✅ تم إرسال التحويل بنجاح! سيظهر في سجل تحويلاتك قيد المراجعة.", "✅ Transfer submitted successfully! It will appear in your history under review.")); refresh(); });
+      .then(({ data, error }) => { if (error) return alert(tr("تعذّر إرسال التحويل، حاول مرة أخرى")); if (data && data.windowClosed) return alert(t("انتهى وقت رفع التحويلات لهذا اليوم. الرجاء المحاولة في الفترة القادمة.", "The transfer window has closed for now. Please try in the next window.")); if (data && data.duplicateRef) return alert(t("⚠️ هذا الرقم المرجعي مُستخدم سابقاً. لا يمكن استخدام نفس رقم التحويل مرتين.", "⚠️ This reference number was already used. You can't reuse the same transfer reference.")); if (data && data.error) return alert(t("تعذّر إرسال التحويل: ", "Submit failed: ") + data.error); setForm({ amount: "", reference: "", date: todayStr(), receipt: "" }); setPayFor(null); alert(t("✅ تم إرسال التحويل بنجاح! سيظهر في سجل تحويلاتك قيد المراجعة.", "✅ Transfer submitted successfully! It will appear in your history under review.")); refresh(); });
   };
   const [upLoading, setUpLoading] = useState(false);
   const [upErr, setUpErr] = useState("");
@@ -2607,7 +2623,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           if (hist.length === 0) return <p className="text-sm text-slate-400">{t("لا يوجد سجل عمل بعد", "No work history yet")}</p>;
           return (
             <div className="overflow-x-auto"><table className="w-full text-sm">
-              <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("الطلبات"), tr("COD"), ...(isFT ? [tr("ساعات الدوام"), t("قبول %", "Accept %")] : [])].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+              <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[tr("التاريخ"), tr("الطلبات"), tr("COD"), ...(isFT ? [tr("ساعات الدوام"), t("قبول %", "Accept %")] : []), t("الدفع", "Payment")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
               <tbody>
                 {hist.map((h, i) => { const capped = Math.min(h.hours, HOURS_CAP); const over = h.hours > HOURS_CAP; const hRed = isFT && h.hours > 0 && h.hours < HOURS_MIN; const aRed = isFT && h.accept > 0 && h.accept < ACCEPT_MIN; return (
                   <tr key={i} className="border-b border-slate-50">
@@ -2616,13 +2632,20 @@ function RiderPortal({ db, riderId, creds, refresh }) {
                     <td className="px-3">{omr(h.cod)}</td>
                     {isFT && <td className="px-3" style={{ color: hRed ? "#c0341d" : "inherit", fontWeight: hRed ? 700 : 400 }}>{capped}{hRed ? " 🔴" : ""}</td>}
                     {isFT && <td className="px-3" style={{ color: aRed ? "#c0341d" : "inherit", fontWeight: aRed ? 700 : 400 }}>{h.accept ? h.accept + "%" : "—"}{aRed ? " 🔴" : ""}</td>}
+                    <td className="px-3">{(() => {
+                      if (h.date < PAY_PER_SHEET_START || h.cod <= 0.001) return <span className="text-slate-300">—</span>;
+                      const info = sheetPayInfo(h.date);
+                      if (info.st === "approved") return <span className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: "#0f9d58" }}><CheckCircle2 size={14} /> {t("تم الدفع", "Paid")}</span>;
+                      if (info.st === "pending") return <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: "#d97706" }}><Clock size={13} /> {t("قيد المراجعة", "Under review")}</span>;
+                      return <button onClick={() => { setForm({ amount: String(h.cod), reference: "", date: h.date, receipt: "" }); setUpErr(""); setPayFor(h); }} className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: "#fee2e2", color: "#c0341d" }}><Upload size={12} /> {info.st === "rejected" ? t("مرفوض — ادفع", "Rejected — Pay") : t("ادفع الآن", "Pay Now")}</button>;
+                    })()}</td>
                   </tr>
                 ); })}
                 {(() => { const codAdj = (db.codAdjustments || []).filter((a) => a.riderId === riderId && a.status === "approved").reduce((s, a) => s + (Number(a.delta) || 0), 0); return Math.abs(codAdj) > 0.0005 ? (
                   <tr className="border-b border-slate-50" style={{ background: "#fff7ed" }}>
                     <td className="py-2 px-3 font-semibold" style={{ color: "#9a3412" }} colSpan={2}>{t("تعديلات يدوية على COD", "Manual COD adjustments")}</td>
                     <td className="px-3 font-semibold" style={{ color: codAdj > 0 ? "#0f9d58" : "#c0341d" }}>{codAdj > 0 ? "+" : ""}{omr(codAdj)}</td>
-                    {isFT && <td className="px-3">—</td>}{isFT && <td className="px-3">—</td>}
+                    {isFT && <td className="px-3">—</td>}{isFT && <td className="px-3">—</td>}<td className="px-3">—</td>
                   </tr>
                 ) : null; })()}
                 <tr className="font-bold bg-slate-50">
@@ -2631,6 +2654,7 @@ function RiderPortal({ db, riderId, creds, refresh }) {
                   <td className="px-3">{omr(m.codToTransfer)}</td>
                   {isFT && <td className="px-3">{m.hours} <span className="text-xs font-normal text-slate-500">= {omr(m.earn)}{m.hoursCapped >= FULL_MONTH_HOURS ? " (راتب كامل)" : ""}</span></td>}
                   {isFT && <td className="px-3" style={{ color: avgAccept > 0 && avgAccept < ACCEPT_MIN ? "#c0341d" : "inherit" }}>{avgAccept ? avgAccept + "%" : "—"}</td>}
+                  <td className="px-3">—</td>
                 </tr>
               </tbody>
             </table></div>
@@ -2928,6 +2952,24 @@ function ShiftsWindow({ db, save, company = null }) {
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2"><Btn kind="ghost" onClick={() => setEditing(null)}>{tr("إلغاء")}</Btn><Btn onClick={saveShift}>{tr("حفظ الشفت")}</Btn></div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!payFor} onClose={() => setPayFor(null)} title={payFor ? t("دفع COD ليوم ", "Pay COD for ") + payFor.date : ""}>
+        {payFor && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg p-3" style={{ background: "#f0fdf4" }}><div className="text-xs text-slate-500">{t("المبلغ المطلوب", "Amount due")}</div><div className="text-xl font-bold" style={{ color: "#0f9d58" }}>{omr(payFor.cod)}</div></div>
+              <div className="rounded-lg p-3" style={{ background: "#eef2ff" }}><div className="text-xs text-slate-500">{t("تاريخ العمل", "Work date")}</div><div className="text-xl font-bold" dir="ltr" style={{ color: BRAND.blue }}>{payFor.date}</div></div>
+            </div>
+            <p className="text-xs text-slate-500">{t("المبلغ والتاريخ ثابتان. أدخل الرقم المرجعي وأرفق الإيصال فقط.", "Amount and date are fixed. Just enter the reference and attach the receipt.")}</p>
+            <Field label={tr("الرقم المرجعي")}><input className={inputCls} dir="ltr" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} /></Field>
+            <Field label={t("إيصال التحويل (صورة أو PDF)", "Transfer receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={onReceipt} /></Field>
+            {upLoading && <p className="text-xs text-slate-500">{t("جارٍ رفع الملف...", "Uploading file...")}</p>}
+            {upErr && <p className="text-xs text-red-600">{upErr}</p>}
+            {form.receipt && !upLoading && <div className="p-2 rounded-lg text-sm font-semibold flex items-center gap-2" style={{ background: "#f0fdf4", color: "#0f9d58" }}><CheckCircle2 size={15} /> {t("تم رفع الإيصال", "Receipt uploaded")}</div>}
+            <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setPayFor(null)}>{tr("إلغاء")}</Btn><Btn onClick={submit} disabled={upLoading}>{upLoading ? t("جارٍ الرفع...", "Uploading...") : t("إرسال الدفع", "Send Payment")}</Btn></div>
           </div>
         )}
       </Modal>
