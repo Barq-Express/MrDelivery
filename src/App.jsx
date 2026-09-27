@@ -2473,7 +2473,7 @@ function HREmpPortal({ data, creds, onRefresh, onLogout }) {
   );
 }
 
-const PAY_PER_SHEET_START = "2026-09-27"; // نظام الدفع لكل شيت يبدأ من هذا التاريخ
+const PAY_PER_SHEET_START = "2026-09-25"; // نسخة تجريبية // نظام الدفع لكل شيت يبدأ من هذا التاريخ
 function RiderPortal({ db, riderId, creds, refresh }) {
   const rider = db.riders.find((r) => r.id === riderId);
   const [form, setForm] = useState({ amount: "", reference: "", date: todayStr(), receipt: "" });
