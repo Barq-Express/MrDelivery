@@ -640,9 +640,9 @@ function riderMonthly(db, riderId) {
   const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
   const mk = (d) => String(d || "").slice(0, 7); // YYYY-MM
   const M = {};
-  const ensure = (m) => { if (!M[m]) M[m] = { cod: 0, ded: 0, paid: 0 }; return M[m]; };
-  // COD من الشيتات (حسب تاريخ الشيت)
-  db.imports.forEach((im) => { const rr = im.results.find((x) => x.riderId === riderId); if (rr && im.date) ensure(mk(im.date)).cod += Number(rr.transferDue != null ? rr.transferDue : rr.cod) || 0; });
+  const ensure = (m) => { if (!M[m]) M[m] = { cod: 0, ded: 0, paid: 0, hours: 0 }; return M[m]; };
+  // COD + مجموع ساعات الشهر من الشيتات (حسب تاريخ الشيت)
+  db.imports.forEach((im) => { const rr = im.results.find((x) => x.riderId === riderId); if (rr && im.date) { const e = ensure(mk(im.date)); e.cod += Number(rr.transferDue != null ? rr.transferDue : rr.cod) || 0; e.hours += Math.min(Number(rr.hours) || 0, HOURS_CAP); } });
   // تعديلات COD اليدوية المعتمدة (حسب تاريخها)
   (db.codAdjustments || []).filter((a) => a.riderId === riderId && a.status === "approved").forEach((a) => { const m = mk(a.at); if (m) ensure(m).cod += Number(a.delta) || 0; });
   // خصومات الراتب (حسب شهر الخصم)
@@ -653,11 +653,11 @@ function riderMonthly(db, riderId) {
   let running = 0;
   const nowMonth = new Date().toISOString().slice(0, 7);
   return months.map((m) => {
-    const cod = r3(M[m].cod), ded = r3(M[m].ded), paid = r3(M[m].paid);
+    const cod = r3(M[m].cod), ded = r3(M[m].ded), paid = r3(M[m].paid), hours = r3(M[m].hours);
     const opening = r3(running);
     running += cod - ded - paid;
     const closing = r3(running);
-    return { month: m, opening, cod, ded, paid, closing, closed: m < nowMonth }; // closed = شهر ماضٍ (مُغلق تلقائياً)
+    return { month: m, opening, cod, ded, paid, hours, closing, closed: m < nowMonth }; // closed = شهر ماضٍ (مُغلق تلقائياً)
   });
 }
 // حساب مبالغ COD ضمن مدة (from/to بصيغة YYYY-MM-DD). أي طرف فارغ = بلا حد
@@ -1078,7 +1078,7 @@ function RiderBulkAdd({ company, existing, onAdd, onClose }) {
 }
 
 function Riders({ db, save, company, user }) {
-  const [q, setQ] = useState(""); const [cf, setCf] = useState("all"); const [af, setAf] = useState("all"); const [natf, setNatf] = useState("all");
+  const [q, setQ] = useState(""); const [cf, setCf] = useState("all"); const [af, setAf] = useState("all"); const [natf, setNatf] = useState("all"); const [vehf, setVehf] = useState("all");
   const [editing, setEditing] = useState(null); const [bulk, setBulk] = useState(false);
   const scoped = db.riders.filter((r) => (!company || r.company === company));
   const allAreas = Array.from(new Set(db.riders.map((r) => r.area).filter(Boolean))).sort();
@@ -1088,6 +1088,7 @@ function Riders({ db, save, company, user }) {
     (company || cf === "all" || r.company === cf) &&
     (af === "all" || (r.area || "") === af) &&
     (natf === "all" || natClass(r.nationality) === natf) &&
+    (vehf === "all" || (r.vehicleType || "") === vehf) &&
     (r.name.includes(q) || r.phone.includes(q) || (r.companyId || "").includes(q) || (r.civil || "").includes(q) || (r.area || "").includes(q)));
   const isAdmin = user && (user.role === "Admin" || user.role === "Operations Manager");
   const [resetOpen, setResetOpen] = useState(false);
@@ -1158,6 +1159,7 @@ function Riders({ db, save, company, user }) {
           {!company && <select className={inputCls + " w-32"} value={cf} onChange={(e) => setCf(e.target.value)}><option value="all">{tr("كل الشركات")}</option>{COMPANIES.map((c) => <option key={c} value={c}>{cLabel(c)}</option>)}</select>}
           <select className={inputCls + " w-32"} value={af} onChange={(e) => setAf(e.target.value)}><option value="all">{tr("كل المناطق")}</option>{areas.map((a) => <option key={a} value={a}>{a}</option>)}</select>
           <select className={inputCls + " w-32"} value={natf} onChange={(e) => setNatf(e.target.value)}><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
+          <select className={inputCls + " w-32"} value={vehf} onChange={(e) => setVehf(e.target.value)}><option value="all">{t("كل المركبات", "All vehicles")}</option><option value="Car">{t("سيارة", "Car")}</option><option value="Bike">{t("دراجة", "Bike")}</option></select>
         </div>
         <div className="flex gap-2">
           <Btn kind="ghost" onClick={() => exportExcel(list.map((r) => { const m = riderMoney(db, r.id); return { المندوب: r.name, الهاتف: r.phone, ID: r.companyId || "", الشركة: cLabel(r.company), النوع: r.type, المنطقة: r.area || "", الكوميشن: r.commission || "", البنك: r.bankName || "", رقم_الحساب: r.bank || "", سويفت: r.swift || "", الطلبات: m.orders, "COD_المتبقي": m.owed, المستحق: m.earn, الحالة: r.status }; }), "Riders_" + (company || "All"))}><Download size={16} /> {t("تصدير Excel", "Export Excel")} ({list.length})</Btn>
@@ -1314,9 +1316,9 @@ function OrdersTab({ company, db, save, user }) {
   const inRange = (dt) => (!hFrom || dt >= hFrom) && (!hTo || dt <= hTo);
   const histRows = ims.filter((im) => inRange(im.date || "")).map((im) => {
     const res = (im.results || []).filter((r) => (hRider === "all" || r.riderId === hRider) && typeMatch(r.riderId));
-    return { date: im.date, orders: res.reduce((a, r) => a + (r.orders || 0), 0), cod: res.reduce((a, r) => a + (r.cod || 0), 0), due: res.reduce((a, r) => a + (r.transferDue || 0), 0) };
+    return { date: im.date, orders: res.reduce((a, r) => a + (r.orders || 0), 0), cod: res.reduce((a, r) => a + (r.cod || 0), 0), due: res.reduce((a, r) => a + (r.transferDue || 0), 0), hours: res.reduce((a, r) => a + Math.min(Number(r.hours) || 0, HOURS_CAP), 0) };
   }).filter((x) => x.orders > 0 || x.cod > 0 || (hRider === "all" && hType === "all")).sort((a, b) => (a.date < b.date ? 1 : -1));
-  const hTotals = histRows.reduce((a, x) => ({ orders: a.orders + x.orders, cod: a.cod + x.cod, due: a.due + x.due }), { orders: 0, cod: 0, due: 0 });
+  const hTotals = histRows.reduce((a, x) => ({ orders: a.orders + x.orders, cod: a.cod + x.cod, due: a.due + x.due, hours: a.hours + x.hours }), { orders: 0, cod: 0, due: 0, hours: 0 });
   const setRow = (i, which, v) => setEditImp((e) => ({ ...e, results: e.results.map((r, idx) => (idx === i ? { ...r, [which]: v } : r)) }));
   const saveImport = () => {
     const results = editImp.results.map((r) => {
@@ -1354,23 +1356,24 @@ function OrdersTab({ company, db, save, user }) {
           <div className="flex items-end">{(hFrom || hTo || hRider !== "all" || hRiderQ || hType !== "all") && <Btn kind="ghost" onClick={() => { setHRider("all"); setHFrom(""); setHTo(""); setHRiderQ(""); setHType("all"); }}>{t("مسح", "Clear")}</Btn>}</div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="rounded-xl p-3 text-center" style={{ background: "#eef2ff" }}><div className="text-xs text-slate-500">{t("إجمالي الطلبات", "Total Orders")}</div><div className="text-2xl font-bold" style={{ color: BRAND.blue }}>{hTotals.orders}</div></div>
+          <div className="rounded-xl p-3 text-center" style={{ background: "#f3e8ff" }}><div className="text-xs text-slate-500">{t("إجمالي ساعات العمل", "Total Work Hours")}</div><div className="text-2xl font-bold" style={{ color: "#7c3aed" }}>{Math.round(hTotals.hours * 10) / 10}</div></div>
           <div className="rounded-xl p-3 text-center" style={{ background: "#f0fdf4" }}><div className="text-xs text-slate-500">{t("إجمالي COD", "Total COD")}</div><div className="text-2xl font-bold" style={{ color: "#0f9d58" }}>{omr(hTotals.cod)}</div></div>
           <div className="rounded-xl p-3 text-center" style={{ background: "#fef9c3" }}><div className="text-xs text-slate-500">{t("المطلوب تحويله", "To Transfer")}</div><div className="text-2xl font-bold" style={{ color: "#a16207" }}>{omr(hTotals.due)}</div></div>
         </div>
 
         <div className="flex justify-end mb-2">
-          <Btn kind="ghost" size="sm" onClick={() => exportExcel(histRows.map((x) => ({ التاريخ: x.date, الطلبات: x.orders, COD: x.cod, المطلوب_تحويله: x.due })), "History_" + company + (hRider !== "all" ? "_" + (companyRiders.find((r) => r.id === hRider)?.name || "") : ""))}><Download size={14} /> Excel</Btn>
+          <Btn kind="ghost" size="sm" onClick={() => exportExcel(histRows.map((x) => ({ التاريخ: x.date, الطلبات: x.orders, ساعات_العمل: Math.round(x.hours * 100) / 100, COD: x.cod, المطلوب_تحويله: x.due })), "History_" + company + (hRider !== "all" ? "_" + (companyRiders.find((r) => r.id === hRider)?.name || "") : ""))}><Download size={14} /> Excel</Btn>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("التاريخ", "Date"), t("الطلبات", "Orders"), "COD", t("المطلوب تحويله", "To Transfer")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("التاريخ", "Date"), t("الطلبات", "Orders"), t("ساعات العمل", "Work Hours"), "COD", t("المطلوب تحويله", "To Transfer")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
             <tbody>
-              {histRows.length === 0 ? <tr><td colSpan={4} className="text-center text-slate-400 py-6">{t("لا توجد بيانات في هذه المدة", "No data in this range")}</td></tr>
-                : histRows.map((x, i) => <tr key={i} className="border-b border-slate-50"><td className="px-3 py-2 font-semibold" dir="ltr">{x.date}</td><td className="px-3">{x.orders}</td><td className="px-3">{omr(x.cod)}</td><td className="px-3">{omr(x.due)}</td></tr>)}
+              {histRows.length === 0 ? <tr><td colSpan={5} className="text-center text-slate-400 py-6">{t("لا توجد بيانات في هذه المدة", "No data in this range")}</td></tr>
+                : histRows.map((x, i) => <tr key={i} className="border-b border-slate-50"><td className="px-3 py-2 font-semibold" dir="ltr">{x.date}</td><td className="px-3">{x.orders}</td><td className="px-3" style={{ color: "#7c3aed" }}>{Math.round(x.hours * 100) / 100}</td><td className="px-3">{omr(x.cod)}</td><td className="px-3">{omr(x.due)}</td></tr>)}
             </tbody>
-            {histRows.length > 0 && <tfoot><tr className="font-bold bg-slate-50"><td className="px-3 py-2">{t("الإجمالي", "Total")}</td><td className="px-3">{hTotals.orders}</td><td className="px-3">{omr(hTotals.cod)}</td><td className="px-3">{omr(hTotals.due)}</td></tr></tfoot>}
+            {histRows.length > 0 && <tfoot><tr className="font-bold bg-slate-50"><td className="px-3 py-2">{t("الإجمالي", "Total")}</td><td className="px-3">{hTotals.orders}</td><td className="px-3" style={{ color: "#7c3aed" }}>{Math.round(hTotals.hours * 10) / 10}</td><td className="px-3">{omr(hTotals.cod)}</td><td className="px-3">{omr(hTotals.due)}</td></tr></tfoot>}
           </table>
         </div>
       </Card>
@@ -1490,6 +1493,42 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const myEmail = (user && user.email) || "";
   const nEmail = (e) => String(e || "").trim().toLowerCase(); // تطبيع موحّد للإيميل (يزيل المسافات وفروق الحروف)
   const isAdminU = user && user.role === "Admin";
+  const isFinanceU = user && (user.role === "Finance" || user.role === "Admin"); // المالية أو الأدمن
+  // نموذج تسديد المالية نيابة عن المندوب (للمبالغ السابقة)
+  const [finPay, setFinPay] = useState(false);
+  const [finId, setFinId] = useState("");
+  const [finAmount, setFinAmount] = useState("");
+  const [finDate, setFinDate] = useState(todayStr());
+  const [finRef, setFinRef] = useState("");
+  const [finReceipt, setFinReceipt] = useState("");
+  const [finUp, setFinUp] = useState(false);
+  const [finErr, setFinErr] = useState("");
+  const findRiderByAnyId = (id) => { const s = String(id || "").trim(); if (!s) return null; return db.riders.find((r) => String(r.companyId || "").trim() === s) || db.riders.find((r) => String(r.civil || "").trim() === s) || db.riders.find((r) => String(r.phone || "").replace(/\D/g, "") === s.replace(/\D/g, "")); };
+  const finMatch = findRiderByAnyId(finId);
+  const finUploadReceipt = (e) => {
+    const f = e.target.files[0]; if (!f) return; setFinErr("");
+    const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name); const isImg = f.type.startsWith("image/");
+    if (!isPdf && !isImg) { setFinErr(t("الملف يجب صورة أو PDF", "File must be image or PDF")); return; }
+    if (f.size > 15 * 1024 * 1024) { setFinErr(t("حجم الملف كبير (حد 15MB)", "File too large (15MB)")); return; }
+    setFinUp(true);
+    const path = "fin-" + Date.now() + "." + (isPdf ? "pdf" : "jpg");
+    supabase.storage.from("receipts").upload(path, f, { contentType: f.type, upsert: true }).then(({ error }) => {
+      setFinUp(false);
+      if (error) { setFinErr(t("تعذّر رفع الإيصال", "Upload failed")); return; }
+      const { data } = supabase.storage.from("receipts").getPublicUrl(path); setFinReceipt((data && data.publicUrl) || "");
+    });
+  };
+  const submitFinPay = () => {
+    const rider = findRiderByAnyId(finId);
+    if (!rider) { setFinErr(t("لم يُعثر على مندوب بهذا الـ ID", "No rider found with this ID")); return; }
+    const amt = Number(finAmount);
+    if (isNaN(amt) || amt <= 0) { setFinErr(t("أدخل مبلغاً صحيحاً أكبر من صفر", "Enter a valid amount > 0")); return; }
+    const me = (user && (user.name || user.email)) || "";
+    const tx = { id: uid(), riderId: rider.id, amount: +amt.toFixed(3), reference: finRef.trim() || ("FIN-" + Date.now()), date: finDate, receipt: finReceipt || "", status: "Approved", reconLabel: "💰 تسديد عبر المالية", decidedBy: me, submittedAt: new Date().toISOString().slice(0, 16).replace("T", " ") };
+    save({ ...db, transfers: [...db.transfers, tx] });
+    setFinPay(false); setFinId(""); setFinAmount(""); setFinDate(todayStr()); setFinRef(""); setFinReceipt(""); setFinErr("");
+    if (onRefresh) onRefresh();
+  };
   const visibleRiders = db.riders.filter((r) => r.company === company); // الجميع يشوف كل المناديب
   const rIds = new Set(visibleRiders.map((r) => r.id));
   const rInfo = (id) => db.riders.find((r) => r.id === id) || {};
@@ -1656,6 +1695,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h3 className="font-bold text-slate-800">{t("مستحقات COD على المناديب", "Rider COD Dues")} — {cLabel(company)}</h3>
           <div className="flex gap-2 flex-wrap">
+            {isFinanceU && <Btn kind="ghost" size="sm" onClick={() => { setFinPay(true); setFinId(""); setFinAmount(""); setFinDate(todayStr()); setFinRef(""); setFinReceipt(""); setFinErr(""); }}><Banknote size={14} /> {t("تسديد عبر المالية", "Finance Settlement")}</Btn>}
             {isAdmin && <Btn kind="ghost" size="sm" onClick={openAssign}><Users size={14} /> {t("توزيع المناديب على الموظفين", "Distribute riders")}</Btn>}
             {isAdmin && <Btn kind="ghost" size="sm" onClick={() => setShowMove(true)}><Users size={14} /> {t("نقل مناديب بين الموظفين", "Move riders")}</Btn>}
             <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 pr-9 pl-3 py-2 text-sm w-44" placeholder={t("اسم / رقم / ID", "name / phone / ID")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -1803,6 +1843,26 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setAdjFor(null)}>{tr("إلغاء")}</Btn><Btn onClick={submitAdj}>{t("حفظ التعديل", "Save")}</Btn></div>
           </div>
         )}
+      </Modal>
+
+      <Modal open={finPay} onClose={() => setFinPay(false)} title={t("تسديد عبر المالية (نيابة عن المندوب)", "Finance Settlement (on rider's behalf)")}>
+        <div className="space-y-3">
+          <p className="text-xs p-2 rounded-lg" style={{ background: "#eef2ff", color: "#3730a3" }}>{t("لتسديد المبالغ السابقة نيابة عن المندوب. يُعتمد مباشرة ويقلّل مستحق COD فوراً.", "To settle previous amounts on the rider's behalf. Approved immediately and reduces COD at once.")}</p>
+          <Field label={t("ID المندوب / الرقم المدني / الهاتف", "Rider ID / Civil / Phone")}><input className={inputCls} dir="ltr" value={finId} onChange={(e) => setFinId(e.target.value)} placeholder={t("أدخل مُعرّف المندوب", "enter rider identifier")} /></Field>
+          {finId.trim() && (finMatch
+            ? <div className="text-xs p-2 rounded-lg" style={{ background: "#f0fdf4", color: "#166534" }}>✓ {finMatch.name} · {cLabel(finMatch.company)} · {t("المستحق COD:", "COD due:")} <b>{omr(riderMoney(db, finMatch.id).owed)}</b></div>
+            : <div className="text-xs p-2 rounded-lg" style={{ background: "#fff1ee", color: "#c0341d" }}>⚠️ {t("لم يُعثر على مندوب بهذا المُعرّف", "No rider found")}</div>)}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t("المبلغ", "Amount")}><input type="number" step="0.001" className={inputCls} dir="ltr" value={finAmount} onChange={(e) => setFinAmount(e.target.value)} placeholder="0.000" /></Field>
+            <Field label={t("تاريخ التسديد", "Settlement date")}><input type="date" className={inputCls} value={finDate} onChange={(e) => setFinDate(e.target.value)} /></Field>
+          </div>
+          <Field label={t("الرقم المرجعي (اختياري)", "Reference (optional)")}><input className={inputCls} dir="ltr" value={finRef} onChange={(e) => setFinRef(e.target.value)} /></Field>
+          <Field label={t("إيصال التسديد (صورة أو PDF)", "Receipt (image or PDF)")}><input className={inputCls} type="file" accept="image/*,application/pdf" onChange={finUploadReceipt} /></Field>
+          {finUp && <p className="text-xs text-slate-500">{t("جارٍ رفع الإيصال...", "Uploading...")}</p>}
+          {finReceipt && !finUp && <p className="text-xs font-semibold" style={{ color: "#0f9d58" }}>✓ {t("تم رفع الإيصال", "Receipt uploaded")}</p>}
+          {finErr && <p className="text-xs text-red-600">{finErr}</p>}
+          <div className="flex justify-end gap-2"><Btn kind="ghost" onClick={() => setFinPay(false)}>{tr("إلغاء")}</Btn><Btn onClick={submitFinPay} disabled={finUp || !finMatch}>{t("تسجيل التسديد", "Record Settlement")}</Btn></div>
+        </div>
       </Modal>
 
       <Modal open={!!dedFor} onClose={() => setDedFor(null)} title={t("خصم من الراتب (سداد COD)", "Salary Deduction (COD)")}>
@@ -2573,6 +2633,7 @@ function HREmpPortal({ data, creds, onRefresh, onLogout }) {
 }
 
 const PAY_PER_SHEET_START = "2026-10-01"; // نظام الدفع لكل شيت يبدأ من هذا التاريخ
+const NEW_SYSTEM_START = "2026-10"; // النظام الجديد (الرصيد الرئيسي) يبدأ من أكتوبر — ما قبله يُسدّد عبر المالية
 function RiderPortal({ db, riderId, creds, refresh }) {
   const rider = db.riders.find((r) => r.id === riderId);
   const [form, setForm] = useState({ amount: "", reference: "", date: todayStr(), receipt: "" });
@@ -2580,6 +2641,11 @@ function RiderPortal({ db, riderId, creds, refresh }) {
   const [pwf, setPwf] = useState({ cur: "", nw: "", cf: "" });
   const [pwMsg, setPwMsg] = useState("");
   const m = riderMoney(db, riderId);
+  // فصل المستحق: من أكتوبر (النظام الجديد، يظهر فوق) عن السابق (يُسدّد عبر المالية)
+  const _r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+  const _mon = riderMonthly(db, riderId);
+  const owedNew = _r3(_mon.filter((x) => x.month >= NEW_SYSTEM_START).reduce((s, x) => s + (x.cod - x.ded - x.paid), 0));
+  const owedOld = _r3(_mon.filter((x) => x.month < NEW_SYSTEM_START).reduce((s, x) => s + (x.cod - x.ded - x.paid), 0));
   const [bankForm, setBankForm] = useState({ bankName: rider ? (rider.bankName || "") : "", bank: rider ? (rider.bank || "") : "", swift: rider ? (rider.swift || "") : "", holder: rider ? (rider.holder || "") : "" });
   const [bankMsg, setBankMsg] = useState("");
   const [bankBusy, setBankBusy] = useState(false);
@@ -2652,35 +2718,49 @@ function RiderPortal({ db, riderId, creds, refresh }) {
           <div><div className="font-bold text-lg">{rider.name}</div><div className="text-xs text-slate-300">{companyPill(rider.company)} · {rider.type}</div></div>
         </div>
       </Card>
-      {m.owed > 0.001 && (
+      {owedNew > 0.001 && (
         <Card className="p-4 border-r-4" style={{ borderColor: "#c0341d", background: "#fff1ee" }}>
           <div className="flex items-start gap-2"><AlertTriangle size={18} color="#c0341d" className="mt-0.5" /><div className="text-sm">
-            <p style={{ color: "#c0341d" }} className="font-semibold">{tr("لديك مبلغ COD لم تحوّله:")} {omr(m.owed)}</p>
+            <p style={{ color: "#c0341d" }} className="font-semibold">{tr("لديك مبلغ COD لم تحوّله:")} {omr(owedNew)}</p>
           </div></div>
         </Card>
       )}
-      {(() => { const mon = riderMonthly(db, riderId); return mon.length > 0 ? (
+      {(() => { const mon = riderMonthly(db, riderId); if (mon.length === 0) return null;
+        const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+        const mv = (r) => r.cod - r.ded - r.paid; // حركة الشهر
+        const owedOld = r3(mon.filter((r) => r.month < NEW_SYSTEM_START).reduce((s, r) => s + mv(r), 0)); // مبالغ سابقة (تُسدّد عبر المالية)
+        const owedNew = r3(mon.filter((r) => r.month >= NEW_SYSTEM_START).reduce((s, r) => s + mv(r), 0)); // من أكتوبر (ادفع الآن)
+        const totalRem = r3(owedOld + owedNew);
+        return (
         <Card className="p-5">
-          <h3 className="font-bold text-slate-800 mb-1 flex items-center gap-2"><FileBarChart size={18} /> {t("رصيد COD الشهري", "Monthly COD Balance")}</h3>
-          <p className="text-sm text-slate-500 mb-3">{t("إجمالي COD المستحق عليك:", "Total outstanding COD:")} <span className="font-bold" style={{ color: m.owed > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(m.owed)}</span></p>
+          <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><FileBarChart size={18} /> {t("رصيد COD الشهري", "Monthly COD Balance")}</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+            <div className="rounded-xl p-3" style={{ background: "#fff1ee" }}><div className="text-xs text-slate-500">{t("المستحق الحالي (من أكتوبر)", "Current due (from Oct)")}</div><div className="text-xl font-bold" style={{ color: owedNew > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(owedNew)}</div></div>
+            <div className="rounded-xl p-3" style={{ background: "#fefce8" }}><div className="text-xs text-slate-500">{t("مبالغ سابقة (عبر المالية)", "Previous (via Finance)")}</div><div className="text-xl font-bold" style={{ color: owedOld > 0.001 ? "#a16207" : "#0f9d58" }}>{omr(owedOld)}</div></div>
+            <div className="rounded-xl p-3" style={{ background: "#eef2ff" }}><div className="text-xs text-slate-500">{t("إجمالي المتبقي", "Total remaining")}</div><div className="text-xl font-bold" style={{ color: BRAND.blue }}>{omr(totalRem)}</div></div>
+          </div>
+          {owedOld > 0.001 && <p className="text-xs mb-3 p-2 rounded-lg" style={{ background: "#fefce8", color: "#854d0e" }}>{t("لديك مبالغ سابقة قبل أكتوبر لا يمكنك سدادها هنا — تواصل مع المالية لتسويتها.", "You have pre-October amounts that can't be paid here — contact Finance to settle them.")}</p>}
           <div className="overflow-x-auto"><table className="w-full text-sm">
-            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("الشهر", "Month"), t("رصيد افتتاحي", "Opening"), "COD", t("خصم", "Deduction"), t("مدفوع", "Paid"), t("رصيد ختامي", "Closing")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
+            <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("الشهر", "Month"), t("رصيد افتتاحي", "Opening"), "COD", t("خصم", "Deduction"), t("مدفوع", "Paid"), t("ساعات", "Hours"), t("المتبقي", "Remaining")].map((h) => <th key={h} className="py-2 px-3 font-semibold">{h}</th>)}</tr></thead>
             <tbody>{mon.map((r) => (
-              <tr key={r.month} className="border-b border-slate-50">
-                <td className="py-2 px-3 font-semibold" dir="ltr">{r.month}{r.closed ? <span className="mr-1 text-[9px] px-1 rounded" style={{ background: "#e2e8f0", color: "#64748b" }}>{t("مغلق", "closed")}</span> : null}</td>
+              <tr key={r.month} className="border-b border-slate-50" style={r.month < NEW_SYSTEM_START ? { background: "#fffbeb" } : undefined}>
+                <td className="py-2 px-3 font-semibold" dir="ltr">{r.month}{r.month < NEW_SYSTEM_START ? <span className="mr-1 text-[9px] px-1 rounded" style={{ background: "#fde68a", color: "#854d0e" }}>{t("سابق", "prev")}</span> : r.closed ? <span className="mr-1 text-[9px] px-1 rounded" style={{ background: "#e2e8f0", color: "#64748b" }}>{t("مغلق", "closed")}</span> : null}</td>
                 <td className="px-3 text-slate-500">{omr(r.opening)}</td>
                 <td className="px-3">{omr(r.cod)}</td>
                 <td className="px-3" style={{ color: r.ded > 0.001 ? "#0f9d58" : "#94a3b8" }}>{r.ded > 0.001 ? "−" + omr(r.ded) : "—"}</td>
                 <td className="px-3" style={{ color: r.paid > 0.001 ? "#0f9d58" : "#94a3b8" }}>{r.paid > 0.001 ? "−" + omr(r.paid) : "—"}</td>
-                <td className="px-3 font-bold" style={{ color: r.closing > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(r.closing)}</td>
+                <td className="px-3 text-slate-500">{r.hours || 0}</td>
+                <td className="px-3 font-bold" style={{ color: mv(r) > 0.001 ? "#c0341d" : "#0f9d58" }}>{omr(mv(r))}</td>
               </tr>
-            ))}</tbody>
+            ))}
+              <tr className="font-bold bg-slate-50"><td className="py-2 px-3" colSpan={6}>{t("إجمالي المتبقي على المندوب", "Total remaining")}</td><td className="px-3" style={{ color: "#c0341d" }}>{omr(totalRem)}</td></tr>
+            </tbody>
           </table></div>
         </Card>
-      ) : null; })()}
+      ); })()}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard icon={<FileBarChart size={16} />} label={tr("الطلبات")} value={m.orders} accent={BRAND.blue} />
-        <StatCard icon={<Banknote size={16} />} label={tr("COD للتحويل")} value={omr(m.owed)} accent="#c0341d" />
+        <StatCard icon={<Banknote size={16} />} label={tr("COD للتحويل")} value={omr(owedNew)} accent="#c0341d" />
         <StatCard icon={<Wallet size={16} />} label={rider.type === "Full Time" ? tr("راتبي المتبقّي") : tr("مستحقّي المتبقّي")} value={omr(m.duesRemaining)} accent={m.duesRemaining > 0.001 ? "#0f9d58" : "#94a3b8"} sub={m.paidDues > 0 ? t("مدفوع: ", "Paid: ") + omr(m.paidDues) + " / " + omr(m.earn) : t("الإجمالي: ", "Total: ") + omr(m.earn)} />
         <StatCard icon={<CheckCircle2 size={16} />} label={tr("المحوّل")} value={omr(m.transferred)} accent={BRAND.navy} />
         {rider.type === "Full Time" && <StatCard icon={<Clock size={16} />} label={tr("ساعات الدوام")} value={m.hours} accent="#7c3aed" />}
