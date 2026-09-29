@@ -671,7 +671,8 @@ function riderMoneyRange(db, riderId, from, to) {
   const codToTransfer = orderCod + codAdj;
   const transferred = db.transfers.filter((t) => t.riderId === riderId && t.status === "Approved" && inRange(t.date)).reduce((a, t) => a + (Number(t.amount) || 0), 0);
   const deducted = db.transfers.filter((t) => t.riderId === riderId && t.status !== "Rejected" && inRange(t.date)).reduce((a, t) => a + (Number(t.amount) || 0), 0);
-  return { orders, codToTransfer: r3(codToTransfer), transferred: r3(transferred), deducted: r3(deducted), owed: r3(codToTransfer - deducted), pendingAmt: r3(deducted - transferred) };
+  const codDed = (db.codDeductions || []).filter((d) => d.riderId === riderId && d.status !== "rejected" && inRange((d.month || String(d.at || "").slice(0, 7)) + "-15")).reduce((s, d) => s + (Number(d.amount) || 0), 0);
+  return { orders, codToTransfer: r3(codToTransfer), transferred: r3(transferred), deducted: r3(deducted), codDed: r3(codDed), owed: r3(codToTransfer - deducted - codDed), pendingAmt: r3(deducted - transferred) };
 }
 
 /* ============================================================
@@ -1624,6 +1625,10 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   const [natDue, setNatDue] = useState("all"); // فلتر الجنسية لجدول المستحقات
   const [dueFrom, setDueFrom] = useState(""); // فلتر التاريخ (من) لجدول المستحقات
   const [dueTo, setDueTo] = useState(""); // فلتر التاريخ (إلى) لجدول المستحقات
+  const [monthSel, setMonthSel] = useState(""); // فلتر الشهر لجدول المستحقات
+  // الأشهر المتاحة (من الشيتات والتحويلات) — الأحدث أولاً
+  const availMonths = Array.from(new Set([...db.imports.map((im) => im.date), ...db.transfers.map((t) => t.date)].map((d) => String(d || "").slice(0, 7)).filter(Boolean))).sort().reverse();
+  const pickMonth = (m) => { setMonthSel(m); if (!m) { setDueFrom(""); setDueTo(""); return; } const [y, mo] = m.split("-").map(Number); const last = new Date(y, mo, 0).getDate(); setDueFrom(m + "-01"); setDueTo(m + "-" + String(last).padStart(2, "0")); };
   // نظرة عامة لكل مندوب: كم عليه COD وهل حوّل
   const rdrs = visibleRiders.filter((r) => r.status === "Active");
   const dateActive = !!(dueFrom || dueTo); // هل فلتر التاريخ مفعّل؟
@@ -1658,9 +1663,10 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
             <select value={agentF} onChange={(e) => setAgentF(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الموظفين", "All agents")}</option>{staffList.map((s) => <option key={s.email} value={s.email}>{s.name}</option>)}<option value="none">{t("بدون موظف", "Unassigned")}</option></select>
             <select value={typeDue} onChange={(e) => setTypeDue(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="Full Time">{t("فول تايم", "Full Time")}</option><option value="Freelancer">{t("فريلانسر", "Freelancer")}</option></select>
             <select value={natDue} onChange={(e) => setNatDue(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الجنسيات", "All nationalities")}</option><option value="omani">{t("عمانيين", "Omani")}</option><option value="foreign">{t("أجانب", "Foreign")}</option><option value="unknown">{t("غير محدد", "Unspecified")}</option></select>
-            <input type="date" value={dueFrom} onChange={(e) => setDueFrom(e.target.value)} title={t("من تاريخ", "From date")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            <input type="date" value={dueTo} onChange={(e) => setDueTo(e.target.value)} title={t("إلى تاريخ", "To date")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            {(dueFrom || dueTo) && <button onClick={() => { setDueFrom(""); setDueTo(""); }} className="text-xs font-semibold text-slate-500 px-2">{t("مسح التاريخ", "Clear dates")}</button>}
+            <select value={monthSel} onChange={(e) => pickMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: monthSel ? BRAND.orange : "#cbd5e1", color: monthSel ? BRAND.orange : undefined }}><option value="">{t("كل الشهور (تراكمي)", "All months (total)")}</option>{availMonths.map((m) => <option key={m} value={m}>{m}</option>)}</select>
+            <input type="date" value={dueFrom} onChange={(e) => { setDueFrom(e.target.value); setMonthSel(""); }} title={t("من تاريخ", "From date")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input type="date" value={dueTo} onChange={(e) => { setDueTo(e.target.value); setMonthSel(""); }} title={t("إلى تاريخ", "To date")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            {(dueFrom || dueTo) && <button onClick={() => { setDueFrom(""); setDueTo(""); setMonthSel(""); }} className="text-xs font-semibold text-slate-500 px-2">{t("مسح", "Clear")}</button>}
             <Btn kind="ghost" size="sm" onClick={() => { const STAR = { review: "قيد المراجعة", approved: "تم التحويل", rejected: "مرفوض", pending: "لم يحوّل" }; exportExcel(shownDue.map((x) => { const r3 = (n) => { const v = Math.round((Number(n) || 0) * 1000) / 1000; return Math.abs(v) < 0.01 ? 0 : v; }; return { المندوب: x.r.name, الهاتف: x.r.phone, ID: x.r.companyId || "", "COD_الكلي": r3(x.m.codToTransfer), المحوّل_المعتمد: r3(x.m.transferred), قيد_المراجعة: r3(x.m.pendingAmt), خصم_الراتب: r3(x.m.codDed), المتبقي: r3(x.m.owed), الحالة: STAR[x.key] || x.label }; }), "COD_Dues_" + company); }}><Download size={14} /> Excel ({shownDue.length})</Btn>
           </div>
         </div>
