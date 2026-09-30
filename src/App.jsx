@@ -1478,7 +1478,12 @@ function OrdersTab({ company, db, save, user }) {
 
 function TransfersTab({ company, db, save, user, onRefresh }) {
   const [viewAudit, setViewAudit] = useState(null);
-  const [subTab, setSubTab] = useState("dues"); // dues | submitted — تبويب فرعي
+  const [subTab, setSubTab] = useState("dues"); // dues | submitted | history — تبويب فرعي
+  const [histQ, setHistQ] = useState("");
+  const [histKind, setHistKind] = useState("all"); // all | ded | adj
+  const [histStat, setHistStat] = useState("all");
+  const [histFrom, setHistFrom] = useState("");
+  const [histTo, setHistTo] = useState("");
   const [page, setPage] = useState(1);
   const [qT, setQT] = useState("");
   const [agentFT, setAgentFT] = useState("all");
@@ -1687,7 +1692,7 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
   return (
     <div className="space-y-4">
       <div className="flex gap-2 border-b border-slate-200">
-        {[["dues", t("مستحقات COD", "COD Dues")], ["submitted", t("سجل التحويلات", "Submitted Transfers")]].map(([k, lbl]) => (
+        {[["dues", t("مستحقات COD", "COD Dues")], ["submitted", t("سجل التحويلات", "Submitted Transfers")], ["history", t("سجل الخصومات", "Deductions Log")]].map(([k, lbl]) => (
           <button key={k} onClick={() => setSubTab(k)} className="px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition" style={subTab === k ? { borderColor: BRAND.orange, color: BRAND.orange } : { borderColor: "transparent", color: "#64748b" }}>{lbl}{k === "submitted" && pending > 0 ? <span className="mr-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full px-1.5" style={{ background: "#d9770622", color: "#d97706" }}>{pending}</span> : null}</button>
         ))}
       </div>
@@ -1831,6 +1836,67 @@ function TransfersTab({ company, db, save, user, onRefresh }) {
           </div>
         </Card>
       )}
+
+      <Card className="p-5" style={{ display: subTab === "history" ? undefined : "none" }}>
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <h3 className="font-bold text-slate-800">{t("سجل الخصومات وتخفيضات COD", "Deductions & COD Reductions Log")} — {cLabel(company)}</h3>
+          <div className="flex gap-2 flex-wrap">
+            <div className="relative"><Search size={15} className="absolute right-3 top-2.5 text-slate-400" /><input className="rounded-lg border border-slate-300 px-3 py-2 text-sm w-52 pr-9 pl-3" placeholder={t("بحث: اسم / هاتف / ID", "name / phone / ID")} value={histQ} onChange={(e) => setHistQ(e.target.value)} /></div>
+            <select value={histKind} onChange={(e) => setHistKind(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الأنواع", "All types")}</option><option value="ded">{t("خصم راتب", "Salary Ded.")}</option><option value="adj">{t("تعديل COD", "COD Adjust")}</option></select>
+            <select value={histStat} onChange={(e) => setHistStat(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="all">{t("كل الحالات", "All statuses")}</option><option value="approved">{t("معتمد", "Approved")}</option><option value="pending">{t("قيد الاعتماد", "Pending")}</option><option value="rejected">{t("مرفوض", "Rejected")}</option></select>
+            <input type="date" value={histFrom} onChange={(e) => setHistFrom(e.target.value)} title={t("من", "From")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <input type="date" value={histTo} onChange={(e) => setHistTo(e.target.value)} title={t("إلى", "To")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+        {(() => {
+          const rows = [
+            ...(db.codDeductions || []).filter((d) => d.company === company).map((d) => ({ kind: "ded", id: d.id, riderId: d.riderId, at: d.at || ((d.month || "") + "-01 00:00"), amt: -(Number(d.amount) || 0), reason: d.reason || "", by: d.by || "—", status: d.status || "approved", decidedBy: "" })),
+            ...(db.codAdjustments || []).filter((a) => a.company === company).map((a) => ({ kind: "adj", id: a.id, riderId: a.riderId, at: a.at || "", amt: Number(a.delta) || 0, reason: a.reason || "", by: a.by || "—", status: a.status || "approved", decidedBy: a.decidedBy || "" })),
+          ].sort((x, y) => String(y.at).localeCompare(String(x.at)));
+          const qq = histQ.trim().toLowerCase();
+          const flt = rows.filter((r) => {
+            const rd = db.riders.find((x) => x.id === r.riderId) || {};
+            const d10 = String(r.at).slice(0, 10);
+            return (histKind === "all" || r.kind === histKind)
+              && (histStat === "all" || r.status === histStat)
+              && (!histFrom || d10 >= histFrom) && (!histTo || d10 <= histTo)
+              && (!qq || (rd.name || "").toLowerCase().includes(qq) || (rd.phone || "").includes(qq) || (rd.companyId || "").toLowerCase().includes(qq));
+          });
+          const totDed = flt.filter((r) => r.kind === "ded" && r.status !== "rejected").reduce((s, r) => s + r.amt, 0);
+          const totAdj = flt.filter((r) => r.kind === "adj" && r.status === "approved").reduce((s, r) => s + r.amt, 0);
+          const kindPill = (k) => k === "ded" ? <Pill color="#0f9d58">{t("خصم راتب", "Salary Ded.")}</Pill> : <Pill color={BRAND.blue}>{t("تعديل COD", "COD Adjust")}</Pill>;
+          const statPill = (s) => s === "approved" ? <Pill color="#0f9d58">{t("معتمد", "Approved")}</Pill> : s === "pending" ? <Pill color="#d97706">{t("قيد الاعتماد", "Pending")}</Pill> : <Pill color="#c0341d">{t("مرفوض", "Rejected")}</Pill>;
+          return (
+            <>
+              <div className="flex gap-2 flex-wrap mb-3 text-xs items-center">
+                <span className="px-2.5 py-1 rounded-lg bg-green-50 text-green-700 font-semibold">{t("إجمالي الخصومات", "Total deductions")}: {omr(Math.abs(totDed))}</span>
+                <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-semibold">{t("صافي تعديلات COD", "Net COD adjust")}: {totAdj >= 0 ? "+" : ""}{omr(totAdj)}</span>
+                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-semibold">{t("عدد العمليات", "Records")}: {flt.length}</span>
+                <Btn kind="ghost" size="sm" onClick={() => exportExcel(flt.map((r) => ({ التاريخ: r.at, المندوب: riderName(r.riderId), النوع: r.kind === "ded" ? "خصم راتب" : "تعديل COD", المبلغ: r.amt, السبب: r.reason, بواسطة: r.by, الحالة: r.status === "approved" ? "معتمد" : r.status === "pending" ? "قيد الاعتماد" : "مرفوض", اعتمده: r.decidedBy || "" })), "DeductionsLog_" + company)}><Download size={14} /> Excel</Btn>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-right text-slate-500 text-xs bg-slate-50 border-b border-slate-200">{[t("التاريخ/الوقت", "Date/Time"), tr("المندوب"), t("النوع", "Type"), t("المبلغ", "Amount"), t("السبب", "Reason"), t("بواسطة", "By"), t("الحالة", "Status")].map((h) => <th key={h} className="py-2.5 px-3 font-semibold">{h}</th>)}</tr></thead>
+                  <tbody>
+                    {flt.map((r) => (
+                      <tr key={r.kind + r.id} className="border-b border-slate-50 hover:bg-slate-50">
+                        <td className="px-3 py-2 text-slate-500 text-xs" dir="ltr">{r.at}</td>
+                        <td className="px-3 font-semibold text-slate-800">{riderName(r.riderId)}</td>
+                        <td className="px-3">{kindPill(r.kind)}</td>
+                        <td className="px-3 font-semibold" style={{ color: r.amt < 0 ? "#c0341d" : "#0f9d58" }}>{r.amt > 0 ? "+" : ""}{omr(r.amt)}</td>
+                        <td className="px-3 text-slate-600" style={{ maxWidth: 260 }}>{r.reason || "—"}{r.decidedBy ? <div className="text-[10px] text-slate-400">{t("اعتمده", "Approved by")}: {r.decidedBy}</div> : null}</td>
+                        <td className="px-3 text-slate-600">{r.by}</td>
+                        <td className="px-3">{statPill(r.status)}</td>
+                      </tr>
+                    ))}
+                    {flt.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">{t("لا توجد عمليات مطابقة", "No matching records")}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          );
+        })()}
+      </Card>
 
       <Modal open={!!adjFor} onClose={() => setAdjFor(null)} title={t("تعديل مبلغ COD", "Adjust COD")}>
         {adjFor && (
