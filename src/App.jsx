@@ -4452,17 +4452,18 @@ export default function App() {
     // جلب إعداد نافذة التحويل من app_state (إعداد عام لا ترجّعه rider_login)
     if (rider.codWindow === undefined) {
       supabase.from("app_state").select("data").eq("id", APP_ROW_ID).single().then(({ data }) => {
-        const cw = (data && data.data && data.data.codWindow) || { enabled: false };
-        setRider((cur) => (cur ? { ...cur, codWindow: cw } : cur));
+        const st = (data && data.data) || {};
+        const cw = st.codWindow || { enabled: false };
+        setRider((cur) => (cur ? { ...cur, codWindow: cw, codDeductions: st.codDeductions || [], codAdjustments: st.codAdjustments || [] } : cur));
       }).catch(() => { setRider((cur) => (cur ? { ...cur, codWindow: { enabled: false } } : cur)); });
     }
     const id = setInterval(() => {
       supabase.rpc("rider_login", { p_phone: rider.creds.phone, p_password: rider.creds.password }).then(({ data }) => {
-        if (data) setRider((cur) => (cur ? { view: normalizeDB(data), creds: cur.creds, codWindow: cur.codWindow } : cur));
+        if (data) setRider((cur) => (cur ? { view: normalizeDB(data), creds: cur.creds, codWindow: cur.codWindow, codDeductions: cur.codDeductions, codAdjustments: cur.codAdjustments } : cur));
       });
-      // حدّث إعداد النافذة دورياً أيضاً
+      // حدّث إعداد النافذة والخصومات دورياً أيضاً
       supabase.from("app_state").select("data").eq("id", APP_ROW_ID).single().then(({ data }) => {
-        if (data && data.data) setRider((cur) => (cur ? { ...cur, codWindow: data.data.codWindow || { enabled: false } } : cur));
+        if (data && data.data) setRider((cur) => (cur ? { ...cur, codWindow: data.data.codWindow || { enabled: false }, codDeductions: data.data.codDeductions || [], codAdjustments: data.data.codAdjustments || [] } : cur));
       });
     }, 30000);
     return () => clearInterval(id);
@@ -4522,11 +4523,11 @@ export default function App() {
   }
 
   if (rider) {
-    const refresh = () => supabase.rpc("rider_login", { p_phone: rider.creds.phone, p_password: rider.creds.password }).then(({ data }) => { if (data) setRider({ view: normalizeDB(data), creds: rider.creds, codWindow: rider.codWindow }); });
+    const refresh = () => supabase.rpc("rider_login", { p_phone: rider.creds.phone, p_password: rider.creds.password }).then(({ data }) => { if (data) setRider({ view: normalizeDB(data), creds: rider.creds, codWindow: rider.codWindow, codDeductions: rider.codDeductions, codAdjustments: rider.codAdjustments }); });
     const logoutRider = () => { try { localStorage.removeItem("mrd_rider"); } catch (e) {} setRider(null); };
     const rd = rider.view.riders[0];
     if (!rd) { logoutRider(); return null; }
-    const riderView = { ...rider.view, codWindow: rider.codWindow !== undefined ? rider.codWindow : { enabled: false } };
+    const riderView = { ...rider.view, codWindow: rider.codWindow !== undefined ? rider.codWindow : { enabled: false }, codDeductions: rider.codDeductions || rider.view.codDeductions || [], codAdjustments: rider.codAdjustments || rider.view.codAdjustments || [] };
     return (
       <div dir={dirOf()} className="min-h-screen bg-slate-100" data-lang={lang}>
         <Topbar user={{ name: rd.name, role: "Rider" }} onLogout={logoutRider} onMenu={null} title={t("بوابة المندوب", "Rider Portal")} logo onToggleLang={toggleLang} />
